@@ -1,0 +1,34 @@
+[package]
+name = "rust-clacc"
+version = "0.1.0"
+authors = ["John Driscoll <johnoliverdriscoll@gmail.com>"]
+description = "Rust implementanion of a CL universal accumulator"
+repository = "https://github.com/johnoliverdriscoll/rust-clacc"
+documentation = "https://docs.rs/rust-clacc"
+license = "MIT"
+keywords = ["crypto", "cryptography", "accumulator", "gmp"]
+categories = [
+  "algorithms",
+  "cryptography",
+  "command-line-utilities",
+  "data-structures",
+  "embedded"
+]
+edition = "2018"
+
+[lib]
+name = "clacc"
+path = "src/clacc.rs"
+
+[[bin]]
+name = "clacc-benchmark"
+path = "src/clacc-benchmark.rs"
+
+[dependencies]
+blake2 = "0.9.0"
+generic-array = "0.14.3"
+num_cpus = "1.13.0"
+rand = "0.7.3"
+rust-gmp = "0.5.0"
+structopt = "0.3.13"
+typenum = "1.12.0"
