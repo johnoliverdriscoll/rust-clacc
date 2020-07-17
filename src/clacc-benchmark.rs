@@ -3,10 +3,11 @@
 //! Run `clacc-benchmark -h` for options.
 use std::time::Instant;
 use num_cpus;
+use rand::RngCore;
 use structopt::StructOpt;
-use clacc::bigint::BigIntGmp;
 use clacc::mapper::MapBlake2b;
 use clacc::typenum::U16;
+use clacc::bigint::BigIntGmp;
 use clacc::{Accumulator, Update};
 
 mod primes;
@@ -48,15 +49,18 @@ fn main() -> Result<(), &'static str> {
 
     // Create accumulator with pregenerated primes.
     let mut acc = Accumulator::<BigIntGmp>::with_private_key(
-        &primes::P.to_vec(),
-        &primes::Q.to_vec(),
+        primes::P.to_vec().as_slice().into(),
+        primes::Q.to_vec().as_slice().into(),
     );
     // Create digests.
     let mut digests: Vec<Vec<u8>> =
         Vec::with_capacity(args.bucket_size + additions_count);
+    let mut rng = rand::thread_rng();
     for _ in 0..(args.bucket_size + additions_count) {
         // Generate 8 random bytes for each element.
-        digests.push((0..8).map(|_| {rand::random::<u8>()}).collect())
+        let mut bytes = vec![0; 8];
+        rng.fill_bytes(&mut bytes);
+        digests.push(bytes);
     }
     // Initialize witnesses.
     let mut witnesses = vec![

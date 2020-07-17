@@ -25,7 +25,7 @@ pub use typenum;
 pub mod bigint;
 pub mod mapper;
 
-use bigint::BigInt;
+use bigint::{BigInt, BigIntGmp};
 use mapper::Mapper;
 
 /// The accumulator base.
@@ -42,7 +42,7 @@ fn to_bigint<T: BigInt, N: ArrayLength<u8>>(x: GenericArray<u8, N>) -> T {
 /// the size of its internal parameters. That is, the number of digits in the
 /// accumulation `z` will never exceed the number of digits in the modulus `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<T: BigInt> {
+pub struct Accumulator<T: BigInt = BigIntGmp> {
 
     /// The current accumulation value.
     pub z: T,
@@ -66,11 +66,12 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::bigint::BigIntGmp;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let acc = Accumulator::<BigIntGmp>::with_private_key(&p, &q);
+    /// let acc = Accumulator::<BigIntGmp>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
     /// ```
-    pub fn with_private_key(p: &[u8], q: &[u8]) -> Self {
-        let p: T = p.into();
-        let q: T = q.into();
+    pub fn with_private_key(p: T, q: T) -> Self {
         Accumulator {
             d: Some(p.sub(1).mul(&q.sub(1))),
             n: p.mul(&q),
@@ -85,12 +86,14 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::Accumulator;
     /// use clacc::bigint::BigIntGmp;
     /// let n = vec![0x0c, 0xa1];
-    /// let acc = Accumulator::<BigIntGmp>::with_public_key(&n);
+    /// let acc = Accumulator::<BigIntGmp>::with_public_key(
+    ///     n.as_slice().into()
+    /// );
     /// ```
-    pub fn with_public_key(n: &[u8]) -> Self {
+    pub fn with_public_key(n: T) -> Self {
         Accumulator {
             d: None,
-            n: n.into(),
+            n: n,
             z: BASE.into(),
         }
     }
@@ -103,7 +106,9 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::mapper::MapBlake2b;
     /// use clacc::typenum::U16;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(&n);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    ///     n.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
@@ -119,7 +124,10 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::typenum::U16;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(&p, &q);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
@@ -147,7 +155,10 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::typenum::U16;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(&p, &q);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.del::<MapBlake2b, U16>(x, &w).is_ok());
@@ -164,7 +175,9 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::mapper::MapBlake2b;
     /// use clacc::typenum::U16;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(&n);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    ///     n.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.del::<MapBlake2b, U16>(x, &w).is_err());
@@ -203,7 +216,10 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::typenum::U16;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(&p, &q);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// acc.add::<MapBlake2b, U16>(x);
     /// let w = acc.prove::<MapBlake2b, U16>(x).unwrap();
@@ -219,7 +235,9 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::mapper::MapBlake2b;
     /// use clacc::typenum::U16;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(&n);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    ///     n.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.prove::<MapBlake2b, U16>(x).is_err());
@@ -256,7 +274,9 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::mapper::MapBlake2b;
     /// use clacc::typenum::U16;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(&n);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    ///     n.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
@@ -272,7 +292,10 @@ impl<T: BigInt> Accumulator<T> {
     /// use clacc::typenum::U16;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(&p, &q);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
     /// let x = b"abc";
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
@@ -395,7 +418,10 @@ impl<T: BigInt> Update<T> {
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(&p, &q);
+    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
     /// // Create the static element.
     /// let xs = b"abc";
     /// // Create the deletion.
