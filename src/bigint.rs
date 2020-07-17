@@ -167,8 +167,7 @@ impl<'a> BigIntDiv<&'a BigIntGmp> for BigIntGmp {
 impl BigInt for BigIntGmp {
 
     /// ```
-    /// use clacc::bigint::BigInt;
-    /// use clacc::bigint::BigIntGmp;
+    /// use clacc::bigint::{BigInt, BigIntGmp};
     /// let x: BigIntGmp = 32.into();
     /// let p = x.next_prime();
     /// assert_eq!(p, 37.into());
@@ -178,8 +177,7 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::BigInt;
-    /// use clacc::bigint::BigIntGmp;
+    /// use clacc::bigint::{BigInt, BigIntGmp};
     /// let x: BigIntGmp = 240.into();
     /// let y: BigIntGmp = 46.into();
     /// let (g, a, b) = x.gcdext(&y);
@@ -193,8 +191,7 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::BigInt;
-    /// use clacc::bigint::BigIntGmp;
+    /// use clacc::bigint::{BigInt, BigIntGmp};
     /// let b: BigIntGmp = 11.into();
     /// let n: BigIntGmp = 7.into();
     /// let m = b.modulus(&n);
@@ -207,8 +204,7 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::BigInt;
-    /// use clacc::bigint::BigIntGmp;
+    /// use clacc::bigint::{BigInt, BigIntGmp};
     /// let b: BigIntGmp = 5.into();
     /// let e: BigIntGmp = 3.into();
     /// let m: BigIntGmp = 13.into();
@@ -222,8 +218,7 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::BigInt;
-    /// use clacc::bigint::BigIntGmp;
+    /// use clacc::bigint::{BigInt, BigIntGmp};
     /// let a: BigIntGmp = 123.into();
     /// let n: BigIntGmp = 4567.into();
     /// let i = a.invert(&n).unwrap();

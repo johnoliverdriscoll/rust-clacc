@@ -443,9 +443,6 @@ impl<T: BigInt> Update<T> {
     /// acheived by simply removing its respective element from the update and
     /// applying the result to its witness.
     ///
-    /// For usage examples, read the source code for the
-    /// [clacc-benchmark](../clacc_benchmark/index.html) utility.
-    ///
     /// Arguments
     ///
     /// * `r` - Receives updated witnesses for static elements.
