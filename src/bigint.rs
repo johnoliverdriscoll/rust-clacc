@@ -41,6 +41,9 @@ pub trait BigInt:
 
     /// Returns `self^-1 mod m`.
     fn invert<'a>(&self, m: &'a Self) -> Option<Self>;
+
+    /// Export the number as a u8 vector.
+    fn to_vec(&self) -> Vec<u8>;
 }
 
 /// A trait describing [BigInt](trait.BigInt.html) addition.
@@ -229,6 +232,15 @@ impl BigInt for BigIntGmp {
             Some(v) => Some(v.into()),
             None => None,
         }
+    }
+
+    /// ```
+    /// use clacc::bigint::{BigInt, BigIntGmp};
+    /// let x: BigIntGmp = 15.into();
+    /// assert_eq!(x.to_vec(), vec![0x0f]);
+    /// ```
+    fn to_vec(&self) -> Vec<u8> {
+        (&self.v).into()
     }
 }
 
