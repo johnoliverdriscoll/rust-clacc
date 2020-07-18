@@ -119,8 +119,8 @@ fn main() -> Result<(), &'static str> {
             thread_count
         ) {
             Ok(_) => {},
-            Err(error) => {
-                return Err(error);
+            x => {
+                return x;
             },
         }
     }
@@ -130,8 +130,8 @@ fn main() -> Result<(), &'static str> {
         for i in deletions_count..(args.bucket_size + additions_count) {
             match acc.verify::<MapBlake2b, U16>(&digests[i], &witnesses[i]) {
                 Ok(()) => {},
-                Err(err) => {
-                    return Err(err);
+                x => {
+                    return x;
                 },
             }
         }

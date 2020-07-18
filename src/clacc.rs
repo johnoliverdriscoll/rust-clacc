@@ -551,7 +551,7 @@ impl<T: BigInt> Update<T> {
         for thread in threads {
             match thread.join() {
                 Ok(_) => {},
-                Err(_) => {
+                _ => {
                     errors = true;
                 },
             }
