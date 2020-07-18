@@ -21,12 +21,13 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicPtr;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
+use serde::{Serialize, Deserialize};
 
 pub use typenum;
 pub mod bigint;
 pub mod mapper;
 
-use bigint::{BigInt, BigIntGmp};
+use bigint::BigInt;
 use mapper::Mapper;
 
 /// The accumulator base.
@@ -43,7 +44,7 @@ fn to_bigint<T: BigInt, N: ArrayLength<u8>>(x: GenericArray<u8, N>) -> T {
 /// the size of its internal parameters. That is, the number of digits in the
 /// accumulation `z` will never exceed the number of digits in the modulus `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<T: BigInt = BigIntGmp> {
+pub struct Accumulator<T: BigInt> {
 
     /// The current accumulation value.
     pub z: T,
@@ -350,7 +351,8 @@ impl<T: BigInt> std::fmt::Display for Accumulator<T> {
 }
 
 /// A witness of an element's membership in an accumulator.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(bound = "T: Serialize, for<'a> T: Deserialize<'a>")]
 pub struct Witness<T: BigInt> {
 
     /// The accumulation value less the element.

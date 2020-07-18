@@ -4,6 +4,9 @@
 //! [BigIntGmp](struct.BigIntGmp.html) which uses
 //! [rust-gmp](https://docs.rs/rust-gmp).
 use gmp::mpz::Mpz;
+use serde::{Serialize, Deserialize};
+use serde::ser::{Serializer, SerializeSeq};
+use serde::de::{Deserializer, Visitor, SeqAccess};
 
 /// A trait describing an arbitrary precision integer.
 pub trait BigInt:
@@ -22,6 +25,8 @@ pub trait BigInt:
     + for<'a> BigIntSub<&'a Self, Output = Self>
     + for<'a> BigIntMul<&'a Self, Output = Self>
     + for<'a> BigIntDiv<&'a Self, Output = Self>
+    + Serialize
+    + for <'de> Deserialize<'de>
     + std::fmt::Debug
     + std::fmt::Display
     + std::fmt::LowerHex
@@ -251,6 +256,54 @@ impl BigInt for BigIntGmp {
     }
 }
 
+impl Serialize for BigIntGmp {
+    /// ```
+    /// use clacc::bigint::BigIntGmp;
+    /// let x: BigIntGmp = 6666666666.into();
+    /// let bytes = velocypack::to_bytes(&x).unwrap();
+    /// let de = velocypack::from_bytes(&bytes).unwrap();
+    /// assert_eq!(x, de);
+    /// ```
+    fn serialize<S>(&self, serializer: S)
+                    -> Result<S::Ok, S::Error> where S: Serializer {
+        let vec = self.to_vec();
+        let mut seq = serializer.serialize_seq(Some(vec.len()))?;
+        for byte in vec {
+            seq.serialize_element(&byte)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for BigIntGmp {
+    fn deserialize<D>(deserializer: D)
+                      -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        struct BigIntVisitor;
+        impl<'de> Visitor<'de> for BigIntVisitor {
+            type Value = BigIntGmp;
+            fn visit_seq<V>(self, mut visitor: V)
+                            -> Result<BigIntGmp, V::Error>
+            where V: SeqAccess<'de> {
+                let mut vec: Vec<u8> = Vec::new();
+                while match visitor.next_element()? {
+                    Some(byte) => {
+                        vec.push(byte);
+                        true
+                    },
+                    None => false,
+                } {}
+                Ok(vec.as_slice().into())
+            }
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>)
+                         -> Result<(), std::fmt::Error> {
+                write!(f, "a bigint")
+            }
+        }
+        deserializer.deserialize_seq(BigIntVisitor)
+    }
+}
+
 enum HexCase {
     Upper,
     Lower,
@@ -265,14 +318,9 @@ impl BigIntGmp {
     ) -> Result<(), std::fmt::Error> {
         let bytes: Vec::<u8> = (&self.v).into();
         for byte in bytes {
-            match match case {
-                HexCase::Upper => f.write_fmt(format_args!("{:02X}", byte)),
-                HexCase::Lower => f.write_fmt(format_args!("{:02x}", byte)),
-            } {
-                Ok(()) => {},
-                err => {
-                    return err;
-                },
+            match case {
+                HexCase::Upper => f.write_fmt(format_args!("{:02X}", byte))?,
+                HexCase::Lower => f.write_fmt(format_args!("{:02x}", byte))?,
             }
         }
         Ok(())

@@ -106,7 +106,7 @@ fn main() -> Result<(), &'static str> {
     let w = witnesses.as_mut_ptr();
     let now = Instant::now();
     unsafe {
-        match update.update_witnesses::<MapBlake2b, U16>(
+        update.update_witnesses::<MapBlake2b, U16>(
             w.add(deletions_count),
             w.add(args.bucket_size),
             &acc,
@@ -117,23 +117,13 @@ fn main() -> Result<(), &'static str> {
             w.add(args.bucket_size),
             additions_count,
             thread_count
-        ) {
-            Ok(_) => {},
-            err => {
-                return err;
-            },
-        }
+        )?;
     }
     let duration_micros = now.elapsed().as_micros();
     // Verify results.
     if args.verify {
         for i in deletions_count..(args.bucket_size + additions_count) {
-            match acc.verify::<MapBlake2b, U16>(&digests[i], &witnesses[i]) {
-                Ok(()) => {},
-                err => {
-                    return err;
-                },
-            }
+            acc.verify::<MapBlake2b, U16>(&digests[i], &witnesses[i])?;
         }
     }
 
