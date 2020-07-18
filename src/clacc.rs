@@ -20,6 +20,7 @@
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicPtr;
 use generic_array::{ArrayLength, GenericArray};
+use rand::RngCore;
 
 pub use typenum;
 pub mod bigint;
@@ -77,6 +78,27 @@ impl<T: BigInt> Accumulator<T> {
             n: p.mul(&q),
             z: BASE.into(),
         }
+    }
+
+    /// Create an accumulator from a randomly generated private key and return
+    /// it along with the generated key parameters.
+    ///
+    /// ```
+    /// use clacc::Accumulator;
+    /// use clacc::bigint::BigIntGmp;
+    /// Accumulator::<BigIntGmp>::with_random_key();
+    /// ```
+    pub fn with_random_key() -> (Accumulator<T>, T, T) {
+        let mut rng = rand::thread_rng();
+        let mut bytes = vec![0; 192];
+        rng.fill_bytes(&mut bytes);
+        let mut p = T::from(bytes.as_slice()).next_prime();
+        rng.fill_bytes(&mut bytes);
+        let mut q = T::from(bytes.as_slice()).next_prime();
+        if p < q {
+            std::mem::swap(&mut p, &mut q);
+        }
+        (Accumulator::with_private_key(p.clone(), q.clone()), p, q)
     }
 
     /// Initialize an accumulator from a public key. An accumulator constructed

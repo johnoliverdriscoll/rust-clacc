@@ -16,6 +16,7 @@ pub trait BigInt:
     + Send
     + Sync
     + Eq
+    + PartialOrd
     + BigIntSub<i64, Output = Self>
     + for<'a> BigIntAdd<&'a Self, Output = Self>
     + for<'a> BigIntSub<&'a Self, Output = Self>
@@ -129,6 +130,12 @@ impl Eq for BigIntGmp {}
 impl PartialEq for BigIntGmp {
     fn eq(&self, other: &Self) -> bool {
         self.v == other.v
+    }
+}
+
+impl PartialOrd for BigIntGmp {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.v.partial_cmp(&other.v)
     }
 }
 
