@@ -21,16 +21,15 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicPtr;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
-use ::serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 
 pub use typenum;
 pub mod bigint;
 pub mod mapper;
-pub mod serde;
+pub mod ser;
 
 use bigint::BigInt;
 use mapper::Mapper;
-use crate::serde::{VpackAccumulator, VpackUpdate};
 
 /// The accumulator base.
 const BASE: i64 = 65537;
@@ -339,39 +338,6 @@ impl<T: BigInt> Accumulator<T> {
 
 }
 
-impl<T: BigInt> VpackAccumulator<T> for Accumulator<T> {
-
-    fn add<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &impl Serialize
-    ) -> Witness<T> {
-        self.add::<Map, N>(&velocypack::to_bytes(x).unwrap())
-    }
-
-    fn del<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &impl Serialize,
-        w: &Witness<T>
-    ) -> Result<(), &'static str> {
-        self.del::<Map, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn prove<Map: Mapper, N: ArrayLength<u8>>(
-        &self,
-        x: &impl Serialize
-    ) -> Result<Witness<T>, &'static str> {
-        self.prove::<Map, N>(&velocypack::to_bytes(x).unwrap())
-    }
-
-    fn verify<Map: Mapper, N: ArrayLength<u8>>(
-        &self,
-        x: &impl Serialize,
-        w: &Witness<T>
-    ) -> Result<(), &'static str> {
-        self.verify::<Map, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-}
-
 impl<T: BigInt> std::fmt::Display for Accumulator<T> {
     fn fmt(
         &self,
@@ -659,41 +625,6 @@ impl<T: BigInt> Update<T> {
         })
     }
 
-}
-
-impl<T: BigInt> VpackUpdate<T> for Update<T> {
-
-    fn add<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &impl Serialize,
-        w: &Witness<T>
-    ) {
-        self.add::<Map, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn del<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &impl Serialize,
-        w: &Witness<T>
-    ) {
-        self.del::<Map, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn undo_add<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &impl Serialize,
-        w: &Witness<T>
-    ) {
-        self.undo_add::<Map, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn undo_del<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &impl Serialize,
-        w: &Witness<T>
-    ) {
-        self.undo_del::<Map, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
 }
 
 impl<T: BigInt> std::fmt::Display for Update<T> {
