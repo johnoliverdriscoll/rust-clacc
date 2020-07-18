@@ -3,8 +3,8 @@
 //! [Update](../struct.Update.html) that automatically serialize the element.
 use generic_array::ArrayLength;
 use serde::Serialize;
+use crate::Witness;
 use crate::bigint::BigInt;
-use crate::{Witness};
 use crate::mapper::Mapper;
 
 /// Trait for an accumulator that automatically serializes elements into
