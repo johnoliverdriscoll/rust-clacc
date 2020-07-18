@@ -9,7 +9,7 @@ use crate::mapper::Mapper;
 
 /// Trait for an accumulator that automatically serializes elements into
 /// [VelocyPack](https://github.com/arangodb/velocypack) format.
-trait VpackAccumulator<T: BigInt> {
+pub trait VpackAccumulator<T: BigInt> {
 
     fn add<Map: Mapper, N: ArrayLength<u8>>(
         &mut self,
@@ -69,7 +69,7 @@ impl<T: BigInt> VpackAccumulator<T> for Accumulator<T> {
 
 /// Trait for an update that automatically serializes elements into
 /// [VelocyPack](https://github.com/arangodb/velocypack) format.
-trait VpackUpdate<T: BigInt> {
+pub trait VpackUpdate<T: BigInt> {
 
     fn add<Map: Mapper, N: ArrayLength<u8>>(
         &mut self,
