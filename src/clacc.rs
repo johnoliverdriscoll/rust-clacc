@@ -210,7 +210,7 @@ impl<T: BigInt> Accumulator<T> {
         &mut self,
         x: &[u8],
         w: &Witness<T>
-    ) -> Result<(), &'static str> {
+    ) -> Result<T, &'static str> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
@@ -228,7 +228,7 @@ impl<T: BigInt> Accumulator<T> {
             },
         };
         self.z = self.z.powm(&x_i, &self.n);
-        Ok(())
+        Ok(self.z.clone())
     }
 
     /// Generate a witness to an element's addition to the accumulation.

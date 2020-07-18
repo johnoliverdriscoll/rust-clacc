@@ -20,7 +20,7 @@ pub trait VpackAccumulator<T: BigInt> {
         &mut self,
         x: &S,
         w: &Witness<T>
-    ) -> Result<(), &'static str>;
+    ) -> Result<T, &'static str>;
 
     fn ser_prove<Map: Mapper, N: ArrayLength<u8>, S: Serialize>(
         &self,
@@ -76,7 +76,7 @@ impl<T: BigInt> VpackAccumulator<T> for Accumulator<T> {
         &mut self,
         x: &S,
         w: &Witness<T>
-    ) -> Result<(), &'static str> {
+    ) -> Result<T, &'static str> {
         self.del::<Map, N>(&velocypack::to_bytes(x).unwrap(), w)
     }
 
