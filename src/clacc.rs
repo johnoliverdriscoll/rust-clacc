@@ -21,11 +21,12 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicPtr;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
-use serde::{Serialize, Deserialize};
+use ::serde::{Serialize, Deserialize};
 
 pub use typenum;
 pub mod bigint;
 pub mod mapper;
+pub mod serde;
 
 use bigint::BigInt;
 use mapper::Mapper;
