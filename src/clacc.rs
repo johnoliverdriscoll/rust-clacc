@@ -53,7 +53,7 @@ pub struct Accumulator<T: BigInt> {
     d: Option<T>,
 
     /// Modulus.
-    n: T,
+    pub n: T,
 }
 
 impl<T: BigInt> Accumulator<T> {
