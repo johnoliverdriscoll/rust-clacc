@@ -270,8 +270,8 @@ impl BigIntGmp {
                 HexCase::Lower => f.write_fmt(format_args!("{:02x}", byte)),
             } {
                 Ok(()) => {},
-                x => {
-                    return x;
+                err => {
+                    return err;
                 },
             }
         }
