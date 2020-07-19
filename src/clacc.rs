@@ -48,13 +48,13 @@ fn to_bigint<T: BigInt, N: ArrayLength<u8>>(x: GenericArray<u8, N>) -> T {
 pub struct Accumulator<T: BigInt> {
 
     /// The current accumulation value.
-    pub z: T,
+    z: T,
 
     /// Private exponent.
     d: Option<T>,
 
     /// Modulus.
-    pub n: T,
+    n: T,
 }
 
 impl<T: BigInt> Accumulator<T> {
@@ -120,6 +120,11 @@ impl<T: BigInt> Accumulator<T> {
             n: n,
             z: BASE.into(),
         }
+    }
+
+    /// Get an accumulator's public key.
+    pub fn get_public_key(&self) -> &T {
+        &self.n
     }
 
     /// Add an element to an accumulator.
@@ -336,6 +341,16 @@ impl<T: BigInt> Accumulator<T> {
         Ok(())
     }
 
+    /// Return the accumulation value as a BigInt.
+    pub fn get_value(&self) -> &T {
+        &self.z
+    }
+
+    /// Set the accumulation value from a BigInt.
+    pub fn set_value(&mut self, z: &T) {
+        self.z = z.clone();
+    }
+
 }
 
 impl<T: BigInt> std::fmt::Display for Accumulator<T> {
@@ -362,6 +377,20 @@ pub struct Witness<T: BigInt> {
     /// A number that, when added to the element, uniquely maps the element to
     /// a prime.
     pub nonce: T,
+}
+
+impl<T: BigInt> Witness<T> {
+
+    /// Return the witness value as a BigInt.
+    pub fn get_value(&self) -> T {
+        self.u.clone()
+    }
+
+    /// Set the witness value from a BigInt.
+    pub fn set_value(&mut self, u: &T) {
+        self.u = u.clone();
+    }
+
 }
 
 impl<T: BigInt> std::fmt::Display for Witness<T> {

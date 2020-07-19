@@ -86,7 +86,7 @@ fn main() -> Result<(), &'static str> {
     for i in args.bucket_size..(args.bucket_size + additions_count) {
         witnesses[i] = acc.add::<MapBlake2b, U16>(&digests[i]);
         // Use the saved accumulation as the witness value.
-        witnesses[i].u = prev.z.clone();
+        witnesses[i].set_value(prev.get_value());
     }
 
     //
