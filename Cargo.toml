@@ -26,6 +26,7 @@ path = "src/clacc-benchmark.rs"
 
 [dependencies]
 blake2 = "0.9.0"
+crossbeam = "0.7.3"
 generic-array = "0.14.3"
 num_cpus = "1.13.0"
 rand = "0.7.3"

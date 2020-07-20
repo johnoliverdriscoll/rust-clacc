@@ -1,6 +1,7 @@
 //! Benchmark the performance of updating witnesses with respect to a variable
 //! bucket size of static elements and turnover amount.
 //! Run `clacc-benchmark -h` for options.
+use std::slice::IterMut;
 use std::time::Instant;
 use num_cpus;
 use rand::RngCore;
@@ -8,7 +9,7 @@ use structopt::StructOpt;
 use clacc::mapper::MapBlake2b;
 use clacc::typenum::U16;
 use clacc::bigint::BigIntGmp;
-use clacc::{Accumulator, Update};
+use clacc::{Accumulator, Update, Witness};
 
 mod primes;
 
@@ -38,6 +39,7 @@ fn main() -> Result<(), &'static str> {
                            args.additions_factor) as usize;
     let deletions_count = ((args.bucket_size as f32) *
                            args.deletions_factor) as usize;
+    let statics_count = args.bucket_size - deletions_count;
     let mut thread_count = args.thread_count;
     if thread_count == 0 {
         thread_count = num_cpus::get();
@@ -52,41 +54,54 @@ fn main() -> Result<(), &'static str> {
         primes::P.to_vec().as_slice().into(),
         primes::Q.to_vec().as_slice().into(),
     );
-    // Create digests.
-    let mut digests: Vec<Vec<u8>> =
-        Vec::with_capacity(args.bucket_size + additions_count);
-    let mut rng = rand::thread_rng();
-    for _ in 0..(args.bucket_size + additions_count) {
-        // Generate 8 random bytes for each element.
-        let mut bytes = vec![0; 8];
-        rng.fill_bytes(&mut bytes);
-        digests.push(bytes);
-    }
-    // Initialize witnesses.
-    let mut witnesses = vec![
-        Default::default();
-        args.bucket_size + additions_count
+    // Create storage for element-witness pairs.
+    let mut deletions: Vec<(Vec<u8>, Witness<BigIntGmp>)> = vec![
+        Default::default(); deletions_count
     ];
-    // Accumulate elements.
-    for i in 0..args.bucket_size {
-        acc.add::<MapBlake2b, U16>(&digests[i]);
+    let mut statics: Vec<(Vec<u8>, Witness<BigIntGmp>)> = vec![
+        Default::default(); statics_count
+    ];
+    let mut additions: Vec<(Vec<u8>, Witness<BigIntGmp>)> = vec![
+        Default::default(); additions_count
+    ];
+    let mut rng = rand::thread_rng();
+    // Generate 8 random bytes for each element.
+    let mut bytes = vec![0; 8];
+    for deletion in deletions.iter_mut() {
+        rng.fill_bytes(&mut bytes);
+        deletion.0 = bytes.clone();
+    }
+    for stat in statics.iter_mut() {
+        rng.fill_bytes(&mut bytes);
+        stat.0 = bytes.clone();
+    }
+    for addition in additions.iter_mut() {
+        rng.fill_bytes(&mut bytes);
+        addition.0 = bytes.clone();
+    }
+    // Accumulate bucket elements.
+    for deletion in deletions.iter() {
+        acc.add::<MapBlake2b, U16>(&deletion.0);
+    }
+    for stat in statics.iter() {
+        acc.add::<MapBlake2b, U16>(&stat.0);
     }
     // Generate witnesses for static elements.
-    for i in deletions_count..args.bucket_size {
-        witnesses[i] = acc.prove::<MapBlake2b, U16>(&digests[i]).unwrap();
+    for stat in statics.iter_mut() {
+        stat.1 = acc.prove::<MapBlake2b, U16>(&stat.0).unwrap();
     }
     // Save accumulation at current state.
     let prev = acc.clone();
     // Accumulate deletions.
-    for i in 0..deletions_count {
-        witnesses[i] = acc.prove::<MapBlake2b, U16>(&digests[i]).unwrap();
-        acc.del::<MapBlake2b, U16>(&digests[i], &witnesses[i]).unwrap();
+    for deletion in deletions.iter_mut() {
+        deletion.1 = acc.prove::<MapBlake2b, U16>(&deletion.0).unwrap();
+        acc.del::<MapBlake2b, U16>(&deletion.0, &deletion.1).unwrap();
     }
     // Accumulate additions.
-    for i in args.bucket_size..(args.bucket_size + additions_count) {
-        witnesses[i] = acc.add::<MapBlake2b, U16>(&digests[i]);
+    for addition in additions.iter_mut() {
+        addition.1 = acc.add::<MapBlake2b, U16>(&addition.0);
         // Use the saved accumulation as the witness value.
-        witnesses[i].set_value(prev.get_value());
+        addition.1.set_value(prev.get_value());
     }
 
     //
@@ -95,35 +110,32 @@ fn main() -> Result<(), &'static str> {
 
     // Batch updates.
     let mut update = Update::new();
-    for i in 0..deletions_count {
-        update.del::<MapBlake2b, U16>(&digests[i], &witnesses[i]);
+    for deletion in deletions.iter() {
+        update.del::<MapBlake2b, U16>(&deletion.0, &deletion.1);
     }
-    for i in args.bucket_size..(args.bucket_size + additions_count)  {
-        update.add::<MapBlake2b, U16>(&digests[i], &witnesses[i]);
+    for addition in additions.iter() {
+        update.add::<MapBlake2b, U16>(&addition.0, &addition.1);
     }
     // Update witnesses.
-    let x = digests.as_ptr();
-    let w = witnesses.as_mut_ptr();
     let now = Instant::now();
-    unsafe {
-        update.update_witnesses::<MapBlake2b, U16>(
-            w.add(deletions_count),
-            w.add(args.bucket_size),
-            &acc,
-            x.add(deletions_count),
-            w.add(deletions_count),
-            args.bucket_size - deletions_count,
-            x.add(args.bucket_size),
-            w.add(args.bucket_size),
-            additions_count,
-            thread_count
-        )?;
-    }
+    update.update_witnesses::<
+        MapBlake2b,
+        U16,
+        IterMut<(Vec<u8>, Witness<BigIntGmp>)>
+    >(
+        &acc,
+        statics.iter_mut(),
+        additions.iter_mut(),
+        thread_count
+    )?;
     let duration_micros = now.elapsed().as_micros();
     // Verify results.
     if args.verify {
-        for i in deletions_count..(args.bucket_size + additions_count) {
-            acc.verify::<MapBlake2b, U16>(&digests[i], &witnesses[i])?;
+        for stat in statics.iter() {
+            acc.verify::<MapBlake2b, U16>(&stat.0, &stat.1).unwrap();
+        }
+        for addition in additions.iter() {
+            acc.verify::<MapBlake2b, U16>(&addition.0, &addition.1).unwrap();
         }
     }
 

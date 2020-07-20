@@ -11,15 +11,17 @@ use generic_array::{ArrayLength, GenericArray};
 /// A trait describing a method for converting some arbitrary data to a fixed
 /// sized digest.
 pub trait Mapper {
-    fn map<N: ArrayLength<u8>>(x: &[u8]) -> GenericArray<u8, N>;
+    fn map<N>(x: &[u8]) -> GenericArray<u8, N>
+    where N: ArrayLength<u8>;
 }
 
 /// An implementation of [Mapper](trait.Mapper.html) using
 /// [blake2](https://docs.rs/blake2).
-pub struct MapBlake2b {}
+pub struct MapBlake2b;
 
 impl Mapper for MapBlake2b {
-    fn map<N: ArrayLength<u8>>(x: &[u8]) -> GenericArray<u8, N> {
+    fn map<N>(x: &[u8]) -> GenericArray<u8, N>
+    where N: ArrayLength<u8> {
         let mut hasher = VarBlake2b::new(N::to_usize()).unwrap();
         hasher.update(x);
         let mut array = None;

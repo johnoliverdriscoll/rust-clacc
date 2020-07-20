@@ -19,6 +19,7 @@
 //! the current state of the accumulator, and its public key.
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicPtr;
+use crossbeam::thread;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
 use serde::{Serialize, Deserialize};
@@ -30,6 +31,7 @@ pub mod ser;
 
 use bigint::BigInt;
 use mapper::Mapper;
+use ser::{VpackAccumulator, VpackUpdate};
 
 /// The accumulator base.
 const BASE: i64 = 65537;
@@ -45,7 +47,7 @@ fn to_bigint<T: BigInt, N: ArrayLength<u8>>(x: GenericArray<u8, N>) -> T {
 /// the size of its internal parameters. That is, the number of digits in the
 /// accumulation `z` will never exceed the number of digits in the modulus `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<T: BigInt> {
+pub struct Accumulator<T> where T: BigInt {
 
     /// The current accumulation value.
     z: T,
@@ -57,7 +59,7 @@ pub struct Accumulator<T: BigInt> {
     n: T,
 }
 
-impl<T: BigInt> Accumulator<T> {
+impl<T> Accumulator<T> where T: BigInt {
 
     /// Initialize an accumulator from private key parameters. All accumulators
     /// are able to add elements and verify witnesses. An accumulator
@@ -161,11 +163,9 @@ impl<T: BigInt> Accumulator<T> {
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
     /// ```
-    pub fn add<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &[u8]
-    ) -> Witness<T> {
-        let x = to_bigint::<T, N>(Map::map(x));
+    pub fn add<M, N>(&mut self, x: &[u8]) -> Witness<T>
+    where M: Mapper, N: ArrayLength<u8> {
+        let x = to_bigint::<T, N>(M::map(x));
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -211,18 +211,16 @@ impl<T: BigInt> Accumulator<T> {
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.del::<MapBlake2b, U16>(x, &w).is_err());
     /// ```
-    pub fn del<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &[u8],
-        w: &Witness<T>
-    ) -> Result<T, &'static str> {
+    pub fn del<M, N>(&mut self, x: &[u8], w: &Witness<T>)
+                     -> Result<T, &'static str>
+    where M: Mapper, N: ArrayLength<u8> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let x_p = to_bigint::<T, N>(Map::map(x)).add(&w.nonce);
+        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
         }
@@ -271,17 +269,15 @@ impl<T: BigInt> Accumulator<T> {
     /// acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.prove::<MapBlake2b, U16>(x).is_err());
     /// ```
-    pub fn prove<Map: Mapper, N: ArrayLength<u8>>(
-        &self,
-        x: &[u8]
-    ) -> Result<Witness<T>, &'static str> {
+    pub fn prove<M, N>(&self, x: &[u8]) -> Result<Witness<T>, &'static str>
+    where M: Mapper, N: ArrayLength<u8> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let x = to_bigint::<T, N>(Map::map(x));
+        let x = to_bigint::<T, N>(M::map(x));
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -329,12 +325,10 @@ impl<T: BigInt> Accumulator<T> {
     /// let w = acc.add::<MapBlake2b, U16>(x);
     /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
     /// ```
-    pub fn verify<Map: Mapper, N: ArrayLength<u8>>(
-        &self,
-        x: &[u8],
-        w: &Witness<T>
-    ) -> Result<(), &'static str> {
-        let x_p = to_bigint::<T, N>(Map::map(x)).add(&w.nonce);
+    pub fn verify<M, N>(&self, x: &[u8], w: &Witness<T>)
+                        -> Result<(), &'static str>
+    where M: Mapper, N: ArrayLength<u8> {
+        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
         }
@@ -353,14 +347,38 @@ impl<T: BigInt> Accumulator<T> {
 
 }
 
-impl<T: BigInt> std::fmt::Display for Accumulator<T> {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>
-    ) -> Result<(), std::fmt::Error> {
+impl<T> VpackAccumulator<T> for Accumulator<T> where T: BigInt {
+
+    fn ser_add<M, N, S>(&mut self, x: &S) -> Witness<T>
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.add::<M, N>(&velocypack::to_bytes(x).unwrap())
+    }
+
+    fn ser_del<M, N, S>(&mut self, x: &S, w: &Witness<T>)
+                        -> Result<T, &'static str>
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.del::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
+    }
+
+    fn ser_prove<M, N, S>(&self, x: &S)
+                          -> Result<Witness<T>, &'static str>
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.prove::<M, N>(&velocypack::to_bytes(x).unwrap())
+    }
+
+    fn ser_verify<M, N, S>(&self, x: &S, w: &Witness<T>)
+                           -> Result<(), &'static str>
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.verify::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
+    }
+}
+
+impl<T> std::fmt::Display for Accumulator<T> where T: BigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
+           -> Result<(), std::fmt::Error> {
         match self.d.as_ref() {
             Some(d) => f.write_fmt(format_args!("({:x}, {:x}, {:x})", d,
-                                                 self.n, self.z)),
+                                                self.n, self.z)),
             None => f.write_fmt(format_args!("({:x}, {:x})", self.n, self.z)),
         }
     }
@@ -369,7 +387,7 @@ impl<T: BigInt> std::fmt::Display for Accumulator<T> {
 /// A witness of an element's membership in an accumulator.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(bound = "T: Serialize, for<'a> T: Deserialize<'a>")]
-pub struct Witness<T: BigInt> {
+pub struct Witness<T> where T: BigInt {
 
     /// The accumulation value less the element.
     pub u: T,
@@ -379,7 +397,7 @@ pub struct Witness<T: BigInt> {
     pub nonce: T,
 }
 
-impl<T: BigInt> Witness<T> {
+impl<T> Witness<T> where T: BigInt{
 
     /// Return the witness value as a BigInt.
     pub fn get_value(&self) -> T {
@@ -393,23 +411,21 @@ impl<T: BigInt> Witness<T> {
 
 }
 
-impl<T: BigInt> std::fmt::Display for Witness<T> {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>
-    ) -> Result<(), std::fmt::Error> {
+impl<T> std::fmt::Display for Witness<T> where T: BigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
+           -> Result<(), std::fmt::Error> {
         f.write_fmt(format_args!("({:x}, {:x})", self.u, self.nonce))
     }
 }
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Clone, Debug)]
-pub struct Update<T: BigInt> {
+pub struct Update<T> where T: BigInt {
     pi_a: T,
     pi_d: T,
 }
 
-impl<T: BigInt> Update<T> {
+impl<T> Update<T> where T: BigInt{
 
     /// Create a new batched update.
     pub fn new() -> Self {
@@ -420,42 +436,30 @@ impl<T: BigInt> Update<T> {
     }
 
     /// Absorb an element that must be added to a witness.
-    pub fn add<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &[u8],
-        w: &Witness<T>
-    ) {
-        let x_p = to_bigint::<T, N>(Map::map(x)).add(&w.nonce);
+    pub fn add<M, N>(&mut self, x: &[u8], w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8> {
+        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         self.pi_a = self.pi_a.mul(&x_p);
     }
 
     /// Absorb an element that must be deleted from a witness.
-    pub fn del<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &[u8],
-        w: &Witness<T>
-    ) {
-        let x_p = to_bigint::<T, N>(Map::map(x)).add(&w.nonce);
+    pub fn del<M, N>(&mut self, x: &[u8], w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8> {
+        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         self.pi_d = self.pi_d.mul(&x_p);
     }
 
     /// Undo an absorbed element's addition into an update.
-    pub fn undo_add<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &[u8],
-        w: &Witness<T>
-    ) {
-        let x_p = to_bigint::<T, N>(Map::map(x)).add(&w.nonce);
+    pub fn undo_add<M, N>(&mut self, x: &[u8], w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8> {
+        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         self.pi_a = self.pi_a.div(&x_p);
     }
 
     /// Undo an absorbed element's deletion from an update.
-    pub fn undo_del<Map: Mapper, N: ArrayLength<u8>>(
-        &mut self,
-        x: &[u8],
-        w: &Witness<T>
-    ) {
-        let x_p = to_bigint::<T, N>(Map::map(x)).add(&w.nonce);
+    pub fn undo_del<M, N>(&mut self, x: &[u8], w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8> {
+        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         self.pi_d = self.pi_a.div(&x_p);
     }
 
@@ -497,13 +501,14 @@ impl<T: BigInt> Update<T> {
     /// wxs = u.update_witness::<MapBlake2b, U16>(&acc, xs, &wxs);
     /// assert!(acc.verify::<MapBlake2b, U16>(xs, &wxs).is_ok());
     /// ```
-    pub fn update_witness<Map: Mapper, N: ArrayLength<u8>>(
+    pub fn update_witness<M, N>(
         &self,
         acc: &Accumulator<T>,
         x: &[u8],
         w: &Witness<T>
-    ) -> Witness<T> {
-        let x_p = to_bigint::<T, N>(Map::map(x)).add(&w.nonce);
+    ) -> Witness<T>
+    where M: Mapper, N: ArrayLength<u8> {
+        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
             u: w.u.powm(&a.mul(&self.pi_a), &acc.n)
@@ -525,138 +530,190 @@ impl<T: BigInt> Update<T> {
     ///
     /// Arguments
     ///
-    /// * `r` - Receives updated witnesses for static elements.
-    /// * `ra` - Receives update witnesse for added elements.
     /// * `acc` - The current accumulator.
-    /// * `x` - Pointer to static elements.
-    /// * `w` - Pointer to the witnesses of the static elements.
-    /// * `n` - The number of static elements.
-    /// * `xa` - Pointer to added elements.
-    /// * `wa` - Pointer to the witnesses of the added elements.
-    /// * `na` - The number of added elements.
+    /// * `s` - 
+    /// * `a` - 
     /// * `thread_count` - The number of threads to use. Returns an error if 0.
-    pub fn update_witnesses<Map: Mapper, N: ArrayLength<u8>>(
+    pub fn update_witnesses<'a, M, N, I>(
         &self,
-        r: *mut Witness<T>,
-        ra: *mut Witness<T>,
         acc: &Accumulator<T>,
-        x: *const Vec<u8>,
-        w: *const Witness<T>,
-        n: usize,
-        xa: *const Vec<u8>,
-        wa: *const Witness<T>,
-        na: usize,
+        s: I,
+        a: I,
         thread_count: usize
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), &'static str>
+    where
+        M: Mapper,
+        N: ArrayLength<u8>,
+        I: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a {
+        struct Raw;
+        impl ElementSerializer<Vec<u8>> for Raw {
+            fn serialize_element(x: &Vec<u8>) -> Vec<u8> {
+                x.clone()
+            }
+        }
+        self.map_update_witnesses::<M, N, Vec<u8>, Raw, I>(
+            acc,
+            s,
+            a,
+            thread_count
+        )
+    }
+
+    fn map_update_witnesses<'a, M, N, V, S, I>(
+        &self,
+        acc: &Accumulator<T>,
+        mut s: I,
+        mut a: I,
+        thread_count: usize
+    ) -> Result<(), &'static str>
+    where
+        M: Mapper,
+        N: ArrayLength<u8>,
+        V: 'a,
+        S: ElementSerializer<V>,
+        I: Iterator<Item = &'a mut (V, Witness<T>)> + 'a {
+        // Wrap iterator as atomic pointer.
+        let s = Arc::new(Mutex::new(AtomicPtr::new(&mut s)));
+        let a = Arc::new(Mutex::new(AtomicPtr::new(&mut a)));
         // Sanity check thread count.
         if thread_count == 0 {
             return Err("thread_count is 0");
         }
-        // Create a mutex marking the index of the current job.
-        let job_index = Arc::new(Mutex::<usize>::new(0));
-        // Create shareable pointers for the inputs and outputs.
-        let r = Arc::new(Mutex::new(AtomicPtr::new(r)));
-        let ra = Arc::new(Mutex::new(AtomicPtr::new(ra)));
-        let x = Arc::new(Mutex::new(AtomicPtr::new(x as *mut Vec<u8>)));
-        let w = Arc::new(Mutex::new(AtomicPtr::new(w as *mut Witness<T>)));
-        let xa = Arc::new(Mutex::new(AtomicPtr::new(xa as *mut Vec<u8>)));
-        let wa = Arc::new(Mutex::new(AtomicPtr::new(wa as *mut Witness<T>)));
-        // Create vector that will store the threads.
-        let mut threads = Vec::with_capacity(thread_count);
         // Create threads.
-        for _ in 0..thread_count {
-            threads.push(self.clone().create_thread::<Map, N>(
-                Arc::clone(&r),
-                Arc::clone(&ra),
-                acc.clone(),
-                Arc::clone(&job_index),
-                Arc::clone(&x),
-                Arc::clone(&w),
-                n,
-                Arc::clone(&xa),
-                Arc::clone(&wa),
-                na
-            ));
-        }
-        // Join threads and note if an error occurs.
-        let mut errors = false;
-        for thread in threads {
-            match thread.join() {
-                Ok(_) => {},
-                _ => {
-                    errors = true;
-                },
+        match thread::scope(|scope| {
+            for _ in 0..thread_count {
+                let update = self.clone();
+                let acc = acc.clone();
+                let s = Arc::clone(&s);
+                let a = Arc::clone(&a);
+                scope.spawn(move |_| {
+                    loop {
+                        let mut pair;
+                        let is_static;
+                        {
+                            let mut s = s.lock().unwrap();
+                            let mut a = a.lock().unwrap();
+                            let iter_s: &mut I;
+                            let iter_a: &mut I;
+                            unsafe {
+                                iter_s = s.get_mut().as_mut().unwrap();
+                                iter_a = a.get_mut().as_mut().unwrap();
+                            }
+                            match iter_s.next() {
+                                Some(next) => {
+                                    pair = next;
+                                    is_static = true;
+                                },
+                                None => {
+                                    match iter_a.next() {
+                                        Some(next) => {
+                                            pair = next;
+                                            is_static = false;
+                                        },
+                                        None => break,
+                                    }
+                                }
+                            };
+                        }
+                        let element = S::serialize_element(&pair.0);
+                        if is_static {
+                            pair.1 = update.update_witness::<M, N>(
+                                &acc,
+                                &element,
+                                &pair.1
+                            );
+                        } else {
+                            let mut u = update.clone();
+                            u.undo_add::<M, N>(&element, &pair.1);
+                            pair.1 = u.update_witness::<M, N>(
+                                &acc,
+                                &element,
+                                &pair.1
+                            );
+                        }
+                    }
+                });
             }
+        }) {
+            Ok(()) => Ok(()),
+            Err(_) => Err("error occured in thread"),
         }
-        if errors {
-            return Err("error occured joining worker threads");
-        }
-        Ok(())
     }
-
-    /// Helper function for `update_witnesses` that creates a worker thread.
-    fn create_thread<Map: Mapper, N: ArrayLength<u8>>(
-        self,
-        r: Arc<Mutex<AtomicPtr<Witness<T>>>>,
-        ra: Arc<Mutex<AtomicPtr<Witness<T>>>>,
-        acc: Accumulator<T>,
-        job_index: Arc<Mutex<usize>>,
-        x: Arc<Mutex<AtomicPtr<Vec<u8>>>>,
-        w: Arc<Mutex<AtomicPtr<Witness<T>>>>,
-        n: usize,
-        xa: Arc<Mutex<AtomicPtr<Vec<u8>>>>,
-        wa: Arc<Mutex<AtomicPtr<Witness<T>>>>,
-        na: usize
-    ) -> std::thread::JoinHandle<()> {
-        std::thread::spawn(move || {
-            loop {
-                let mut i;
-                {
-                    // Get the current job index.
-                    let mut job_index = job_index.lock().unwrap();
-                    // Check if there are any more jobs left.
-                    if *job_index == n + na {
-                        break;
-                    }
-                    // Save the current job index outside this scope so that
-                    // the mutex can be released as soon as possible.
-                    i = *job_index;
-                    // Increment the job index.
-                    *job_index += 1;
-                }
-                if i < n {
-                    // If i < n, perform update on a static element.
-                    unsafe {
-                        // Get pointers.
-                        let x = &*x.lock().unwrap().get_mut().add(i);
-                        let w = &*w.lock().unwrap().get_mut().add(i);
-                        let r = r.lock().unwrap().get_mut().add(i);
-                        // Update witness.
-                        *r = self.update_witness::<Map, N>(&acc, x, w);
-                    }
-                } else {
-                    // Otherwise, perform update on an added element.
-                    i -= n;
-                    unsafe {
-                        // Get pointers.
-                        let x = &*xa.lock().unwrap().get_mut().add(i);
-                        let w = &*wa.lock().unwrap().get_mut().add(i);
-                        let r = ra.lock().unwrap().get_mut().add(i);
-                        // Create a clone of the update.
-                        let mut u = self.clone();
-                        // Remove the addition from the update.
-                        u.undo_add::<Map, N>(x, &w);
-                        // Update witness.
-                        *r = u.update_witness::<Map, N>(&acc, x, w);
-                    }
-                }
-            }
-        })
-    }
-
 }
 
-impl<T: BigInt> std::fmt::Display for Update<T> {
+trait ElementSerializer<V> {
+    fn serialize_element(x: &V) -> Vec<u8>;
+}
+
+impl<T: BigInt> VpackUpdate<T> for Update<T> {
+
+    fn ser_add<M, N, S>(&mut self, x: &S, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.add::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
+    }
+
+    fn ser_del<M, N, S>(&mut self, x: &S, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.del::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
+    }
+
+    fn ser_undo_add<M, N, S>(&mut self, x: &S, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.undo_add::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
+    }
+
+    fn ser_undo_del<M, N, S>(&mut self, x: &S, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.undo_del::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
+    }
+
+    fn ser_update_witness<M, N, S>(
+        &self,
+        acc: &Accumulator<T>,
+        x: &S,
+        w: &Witness<T>
+    ) -> Witness<T>
+    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
+        self.update_witness::<M, N>(
+            acc,
+            &velocypack::to_bytes(x).unwrap(),
+            w
+        )
+    }
+
+    fn ser_update_witnesses<'a, M, N, S, I>(
+        &self,
+        acc: &Accumulator<T>,
+        s: I,
+        a: I,
+        thread_count: usize
+    ) -> Result<(), &'static str>
+    where
+        M: Mapper,
+        N: ArrayLength<u8>,
+        S: Serialize + 'a,
+        I: Iterator<Item = &'a mut (S, Witness<T>)> + 'a {
+        self.map_update_witnesses::<
+            M,
+            N,
+            S,
+            VpackSerializer<S>,
+            I,
+         >(acc, s, a, thread_count)
+    }
+}
+
+struct VpackSerializer<S> {
+    phantom: std::marker::PhantomData<S>,
+}
+
+impl<S> ElementSerializer<S> for VpackSerializer<S> where S: Serialize {
+    fn serialize_element(x: &S) -> Vec<u8> {
+        velocypack::to_bytes(x).unwrap()
+    }
+}
+
+impl<T> std::fmt::Display for Update<T> where T: BigInt {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>
