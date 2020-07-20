@@ -531,8 +531,8 @@ impl<T> Update<T> where T: BigInt{
     /// Arguments
     ///
     /// * `acc` - The current accumulator.
-    /// * `s` - 
-    /// * `a` - 
+    /// * `s` - Iterator to element-witness pairs of static elements.
+    /// * `a` - Iterator to element-witness pairs of added elements.
     /// * `thread_count` - The number of threads to use. Returns an error if 0.
     pub fn update_witnesses<'a, M, N, I>(
         &self,
@@ -588,7 +588,7 @@ impl<T> Update<T> where T: BigInt{
                 let a = Arc::clone(&a);
                 scope.spawn(move |_| {
                     loop {
-                        let mut pair;
+                        let pair;
                         let is_static;
                         {
                             let mut s = s.lock().unwrap();
