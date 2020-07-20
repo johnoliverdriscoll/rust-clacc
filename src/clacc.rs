@@ -534,24 +534,25 @@ impl<T> Update<T> where T: BigInt{
     /// * `s` - Iterator to element-witness pairs of static elements.
     /// * `a` - Iterator to element-witness pairs of added elements.
     /// * `thread_count` - The number of threads to use. Returns an error if 0.
-    pub fn update_witnesses<'a, M, N, I>(
+    pub fn update_witnesses<'a, M, N, IS, IA>(
         &self,
         acc: &Accumulator<T>,
-        s: I,
-        a: I,
+        s: IS,
+        a: IA,
         thread_count: usize
     ) -> Result<(), &'static str>
     where
         M: Mapper,
         N: ArrayLength<u8>,
-        I: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a {
+        IS: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a,
+        IA: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a {
         struct Raw;
         impl ElementSerializer<Vec<u8>> for Raw {
             fn serialize_element(x: &Vec<u8>) -> Vec<u8> {
                 x.clone()
             }
         }
-        self.map_update_witnesses::<M, N, Vec<u8>, Raw, I>(
+        self.map_update_witnesses::<M, N, Vec<u8>, Raw, IS, IA>(
             acc,
             s,
             a,
@@ -559,11 +560,11 @@ impl<T> Update<T> where T: BigInt{
         )
     }
 
-    fn map_update_witnesses<'a, M, N, V, S, I>(
+    fn map_update_witnesses<'a, M, N, V, S, IS, IA>(
         &self,
         acc: &Accumulator<T>,
-        mut s: I,
-        mut a: I,
+        mut s: IS,
+        mut a: IA,
         thread_count: usize
     ) -> Result<(), &'static str>
     where
@@ -571,7 +572,8 @@ impl<T> Update<T> where T: BigInt{
         N: ArrayLength<u8>,
         V: 'a,
         S: ElementSerializer<V>,
-        I: Iterator<Item = &'a mut (V, Witness<T>)> + 'a {
+        IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a,
+        IA: Iterator<Item = &'a mut (V, Witness<T>)> + 'a {
         // Wrap iterator as atomic pointer.
         let s = Arc::new(Mutex::new(AtomicPtr::new(&mut s)));
         let a = Arc::new(Mutex::new(AtomicPtr::new(&mut a)));
@@ -593,8 +595,8 @@ impl<T> Update<T> where T: BigInt{
                         {
                             let mut s = s.lock().unwrap();
                             let mut a = a.lock().unwrap();
-                            let iter_s: &mut I;
-                            let iter_a: &mut I;
+                            let iter_s: &mut IS;
+                            let iter_a: &mut IA;
                             unsafe {
                                 iter_s = s.get_mut().as_mut().unwrap();
                                 iter_a = a.get_mut().as_mut().unwrap();
@@ -681,24 +683,26 @@ impl<T: BigInt> VpackUpdate<T> for Update<T> {
         )
     }
 
-    fn ser_update_witnesses<'a, M, N, S, I>(
+    fn ser_update_witnesses<'a, M, N, S, IS, IA>(
         &self,
         acc: &Accumulator<T>,
-        s: I,
-        a: I,
+        s: IS,
+        a: IA,
         thread_count: usize
     ) -> Result<(), &'static str>
     where
         M: Mapper,
         N: ArrayLength<u8>,
         S: Serialize + 'a,
-        I: Iterator<Item = &'a mut (S, Witness<T>)> + 'a {
+        IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a,
+        IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a {
         self.map_update_witnesses::<
             M,
             N,
             S,
             VpackSerializer<S>,
-            I,
+            IS,
+            IA,
          >(acc, s, a, thread_count)
     }
 }

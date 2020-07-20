@@ -50,16 +50,17 @@ pub trait VpackUpdate<T: BigInt> {
     ) -> Witness<T>
     where M: Mapper, N: ArrayLength<u8>, S: Serialize;
 
-    fn ser_update_witnesses<'a, M, N, S, I>(
+    fn ser_update_witnesses<'a, M, N, S, IS, IA>(
         &self,
         acc: &Accumulator<T>,
-        s: I,
-        a: I,
+        s: IS,
+        a: IA,
         thread_count: usize
     ) -> Result<(), &'static str>
     where
         M: Mapper,
         N: ArrayLength<u8>,
         S: Serialize + 'a,
-        I: Iterator<Item = &'a mut (S, Witness<T>)> + 'a;
+        IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a,
+        IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a;
 }

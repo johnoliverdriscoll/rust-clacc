@@ -1,7 +1,6 @@
 //! Benchmark the performance of updating witnesses with respect to a variable
 //! bucket size of static elements and turnover amount.
 //! Run `clacc-benchmark -h` for options.
-use std::slice::IterMut;
 use std::time::Instant;
 use num_cpus;
 use rand::RngCore;
@@ -118,11 +117,7 @@ fn main() -> Result<(), &'static str> {
     }
     // Update witnesses.
     let now = Instant::now();
-    update.update_witnesses::<
-        MapBlake2b,
-        U16,
-        IterMut<(Vec<u8>, Witness<BigIntGmp>)>
-    >(
+    update.update_witnesses::<MapBlake2b, U16, _, _>(
         &acc,
         statics.iter_mut(),
         additions.iter_mut(),
