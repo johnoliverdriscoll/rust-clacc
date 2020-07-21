@@ -4,10 +4,7 @@
 //! digest using a cryptographic hash function. The implementation provided by
 //! this package is [MapBlake2b](struct.MapBlake2b.html) which uses the
 //! [Blake2b compression algorithm](https://blake2.net/blake2.pdf).
-use blake2::{
-    VarBlake2b,
-    digest::{Update, VariableOutput},
-};
+use blake2::{VarBlake2b, digest::{Update, VariableOutput}};
 use generic_array::{ArrayLength, GenericArray};
 
 /// A trait describing a method for converting some arbitrary data to a fixed

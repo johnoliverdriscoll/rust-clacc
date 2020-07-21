@@ -3,11 +3,7 @@
 //! [Update](../struct.Update.html) that automatically serialize the element.
 use generic_array::ArrayLength;
 use serde::Serialize;
-use crate::{
-    Accumulator, Witness,
-    bigint::BigInt,
-    mapper::Mapper,
-};
+use crate::{Accumulator, Witness, bigint::BigInt, mapper::Mapper};
 
 /// Trait for an accumulator that automatically serializes elements into
 /// [VelocyPack](https://github.com/arangodb/velocypack) format.
