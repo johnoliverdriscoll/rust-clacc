@@ -17,8 +17,7 @@
 //! and is able to add and delete elements while untrusted workers are able to
 //! recalculate witnesses provided they have access to the previous witnesses,
 //! the current state of the accumulator, and its public key.
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicPtr;
+use std::sync::{Arc, Mutex, atomic::AtomicPtr};
 use crossbeam::thread;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;

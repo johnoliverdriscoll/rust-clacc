@@ -5,10 +5,14 @@ use std::time::Instant;
 use num_cpus;
 use rand::RngCore;
 use structopt::StructOpt;
-use clacc::mapper::MapBlake2b;
-use clacc::typenum::U16;
-use clacc::bigint::BigIntGmp;
-use clacc::{Accumulator, Update, Witness};
+use clacc::{
+    Accumulator,
+    Update,
+    Witness,
+    mapper::MapBlake2b,
+    typenum::U16,
+    bigint::BigIntGmp,
+};
 
 mod primes;
 

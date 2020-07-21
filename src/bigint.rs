@@ -4,9 +4,12 @@
 //! [BigIntGmp](struct.BigIntGmp.html) which uses
 //! [rust-gmp](https://docs.rs/rust-gmp).
 use gmp::mpz::Mpz;
-use serde::{Serialize, Deserialize};
-use serde::ser::{Serializer, SerializeSeq};
-use serde::de::{Deserializer, Visitor, SeqAccess};
+use serde::{
+    Serialize,
+    Deserialize,
+    ser::{Serializer, SerializeSeq},
+    de::{Deserializer, Visitor, SeqAccess},
+};
 
 /// A trait describing an arbitrary precision integer.
 pub trait BigInt:
