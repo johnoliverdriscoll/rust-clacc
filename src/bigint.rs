@@ -5,8 +5,7 @@
 //! [rust-gmp](https://docs.rs/rust-gmp).
 use gmp::mpz::Mpz;
 use serde::{
-    Serialize,
-    Deserialize,
+    Serialize, Deserialize,
     ser::{Serializer, SerializeSeq},
     de::{Deserializer, Visitor, SeqAccess},
 };

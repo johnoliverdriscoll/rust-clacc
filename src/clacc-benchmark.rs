@@ -6,9 +6,7 @@ use num_cpus;
 use rand::RngCore;
 use structopt::StructOpt;
 use clacc::{
-    Accumulator,
-    Update,
-    Witness,
+    Accumulator, Update, Witness,
     mapper::MapBlake2b,
     typenum::U16,
     bigint::BigIntGmp,
