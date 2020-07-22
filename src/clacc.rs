@@ -86,20 +86,44 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Create an accumulator from a randomly generated private key and return
     /// it along with the generated key parameters.
     ///
+    /// If `key_bits` is `None`, the bit size of the generated modulus is 3072.
+    ///
     /// ```
     /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// Accumulator::<BigIntGmp>::with_random_key();
+    /// use clacc::bigint::{BigInt, BigIntGmp};
+    /// assert_eq!(Accumulator::<BigIntGmp>::with_random_key(None)
+    ///            .0
+    ///            .get_public_key()
+    ///            .size_in_bits(), 3072);
+    /// assert_eq!(Accumulator::<BigIntGmp>::with_random_key(Some(4096))
+    ///            .0
+    ///            .get_public_key()
+    ///            .size_in_bits(), 4096);
     /// ```
-    pub fn with_random_key() -> (Accumulator<T>, T, T) {
+    pub fn with_random_key(
+        key_bits: Option<usize>
+    ) -> (Accumulator<T>, T, T) {
         let mut rng = rand::thread_rng();
-        let mut bytes = vec![0; 192];
-        rng.fill_bytes(&mut bytes);
-        let mut p = T::from(bytes.as_slice()).next_prime();
-        rng.fill_bytes(&mut bytes);
-        let mut q = T::from(bytes.as_slice()).next_prime();
-        if p < q {
-            std::mem::swap(&mut p, &mut q);
+        let mod_bits = match key_bits {
+            Some(bits) => bits,
+            None => 3072,
+        };
+        let prime_bytes = (mod_bits + 7) / 16;
+        let mut p;
+        let mut q;
+        let mut bytes = vec![0; prime_bytes];
+        loop {
+            rng.fill_bytes(&mut bytes);
+            p = T::from(bytes.as_slice()).next_prime();
+            rng.fill_bytes(&mut bytes);
+            q = T::from(bytes.as_slice()).next_prime();
+            if p.mul(&q).size_in_bits() != mod_bits {
+                continue;
+            }
+            if p < q {
+                std::mem::swap(&mut p, &mut q);
+            }
+            break;
         }
         (Accumulator::with_private_key(p.clone(), q.clone()), p, q)
     }

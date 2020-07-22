@@ -50,6 +50,9 @@ pub trait BigInt:
     /// Returns `self^-1 mod m`.
     fn invert<'a>(&self, m: &'a Self) -> Option<Self>;
 
+    /// Returns the size of the number in bits.
+    fn size_in_bits(&self) -> usize;
+
     /// Export the number as a u8 vector.
     fn to_vec(&self) -> Vec<u8>;
 }
@@ -246,6 +249,17 @@ impl BigInt for BigIntGmp {
             Some(v) => Some(v.into()),
             None => None,
         }
+    }
+
+    /// ```
+    /// use clacc::bigint::{BigInt, BigIntGmp};
+    /// let a: BigIntGmp = 3.into();
+    /// assert_eq!(a.size_in_bits(), 2);
+    /// let b: BigIntGmp = 256.into();
+    /// assert_eq!(b.size_in_bits(), 9);
+    /// ```
+    fn size_in_bits(&self) -> usize {
+        self.v.size_in_base(2)
     }
 
     /// ```
