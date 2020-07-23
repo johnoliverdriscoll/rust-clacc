@@ -353,9 +353,10 @@ impl<T> Accumulator<T> where T: BigInt {
     where M: Mapper, N: ArrayLength<u8> {
         let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
-            return Err("x not in z");
+            Err("x not in z")
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 
     /// Return the accumulation value as a BigInt.
@@ -618,12 +619,12 @@ impl<T> Update<T> where T: BigInt{
                         {
                             let mut s = s.lock().unwrap();
                             let mut a = a.lock().unwrap();
-                            let iter_s: &mut IS;
-                            let iter_a: &mut IA;
-                            unsafe {
-                                iter_s = s.get_mut().as_mut().unwrap();
-                                iter_a = a.get_mut().as_mut().unwrap();
-                            }
+                            let iter_s = unsafe {
+                                s.get_mut().as_mut().unwrap()
+                            };
+                            let iter_a = unsafe {
+                                a.get_mut().as_mut().unwrap()
+                            };
                             match iter_s.next() {
                                 Some(next) => {
                                     pair = next;
