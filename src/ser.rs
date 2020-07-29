@@ -59,6 +59,6 @@ pub trait VpackUpdate<T: BigInt> {
         M: Mapper,
         N: ArrayLength<u8>,
         S: Serialize + 'a,
-        IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a,
-        IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a;
+        IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send,
+        IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send;
 }

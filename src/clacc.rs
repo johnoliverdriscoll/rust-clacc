@@ -17,7 +17,7 @@
 //! and is able to add and delete elements while untrusted workers are able to
 //! recalculate witnesses provided they have access to the previous witnesses,
 //! the current state of the accumulator, and its public key.
-use std::sync::{Arc, Mutex, atomic::AtomicPtr};
+use std::sync::{Arc, Mutex};
 use crossbeam::thread;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
@@ -568,8 +568,8 @@ impl<T> Update<T> where T: BigInt{
     where
         M: Mapper,
         N: ArrayLength<u8>,
-        IS: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a,
-        IA: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a {
+        IS: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a + Send,
+        IA: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a + Send {
         struct Raw;
         impl ElementSerializer<Vec<u8>> for Raw {
             fn serialize_element(x: &Vec<u8>) -> Vec<u8> {
@@ -587,8 +587,8 @@ impl<T> Update<T> where T: BigInt{
     fn map_update_witnesses<'a, M, N, V, S, IS, IA>(
         &self,
         acc: &Accumulator<T>,
-        mut s: IS,
-        mut a: IA,
+        s: IS,
+        a: IA,
         thread_count: usize
     ) -> Result<(), &'static str>
     where
@@ -596,11 +596,11 @@ impl<T> Update<T> where T: BigInt{
         N: ArrayLength<u8>,
         V: 'a,
         S: ElementSerializer<V>,
-        IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a,
-        IA: Iterator<Item = &'a mut (V, Witness<T>)> + 'a {
+        IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send,
+        IA: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send {
         // Wrap iterator as atomic pointer.
-        let s = Arc::new(Mutex::new(AtomicPtr::new(&mut s)));
-        let a = Arc::new(Mutex::new(AtomicPtr::new(&mut a)));
+        let s = Arc::new(Mutex::new(s));
+        let a = Arc::new(Mutex::new(a));
         // Sanity check thread count.
         if thread_count == 0 {
             return Err("thread_count is 0");
@@ -619,19 +619,13 @@ impl<T> Update<T> where T: BigInt{
                         {
                             let mut s = s.lock().unwrap();
                             let mut a = a.lock().unwrap();
-                            let iter_s = unsafe {
-                                s.get_mut().as_mut().unwrap()
-                            };
-                            let iter_a = unsafe {
-                                a.get_mut().as_mut().unwrap()
-                            };
-                            match iter_s.next() {
+                            match s.next() {
                                 Some(next) => {
                                     pair = next;
                                     is_static = true;
                                 },
                                 None => {
-                                    match iter_a.next() {
+                                    match a.next() {
                                         Some(next) => {
                                             pair = next;
                                             is_static = false;
@@ -718,8 +712,8 @@ impl<T: BigInt> VpackUpdate<T> for Update<T> {
         M: Mapper,
         N: ArrayLength<u8>,
         S: Serialize + 'a,
-        IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a,
-        IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a {
+        IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send,
+        IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send {
         self.map_update_witnesses::<
             M,
             N,
