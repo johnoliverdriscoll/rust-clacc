@@ -1,5 +1,4 @@
-//! Provides overloaded methods for
-//! [Accumulator](../struct.Accumulator.html) and
+//! Provides methods for [Accumulator](../struct.Accumulator.html) and
 //! [Update](../struct.Update.html) that automatically serialize the element.
 use generic_array::ArrayLength;
 use serde::Serialize;
