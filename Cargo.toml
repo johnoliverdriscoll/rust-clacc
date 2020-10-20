@@ -10,7 +10,6 @@ keywords = ["crypto", "cryptography", "accumulator", "gmp"]
 categories = [
   "algorithms",
   "cryptography",
-  "command-line-utilities",
   "data-structures",
   "embedded"
 ]
