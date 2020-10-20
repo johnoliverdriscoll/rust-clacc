@@ -24,14 +24,20 @@ path = "src/clacc.rs"
 name = "clacc-benchmark"
 path = "src/clacc-benchmark.rs"
 
+[features]
+default = ["blake2", "rust-gmp"]
+bare = []
+
 [dependencies]
-blake2 = "0.9.0"
+blake2 = {version = "0.9.0", optional = true}
 crossbeam = "0.7.3"
 generic-array = "0.14.3"
-num_cpus = "1.13.0"
 rand = "0.7.3"
-rust-gmp = "0.5.0"
+rust-gmp = {version = "0.5.0", optional = true}
 serde = {version = "1.0.114", features = ["derive"]}
-structopt = "0.3.13"
 typenum = "1.12.0"
 velocypack = "0.1.1"
+
+[dev-dependencies]
+num_cpus = "1.13.0"
+structopt = "0.3.13"

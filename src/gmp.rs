@@ -1,8 +1,11 @@
-//! Arbitrary precision integer module.
-//!
-//! The implementation provided by this package is
-//! [BigIntGmp](struct.BigIntGmp.html) which uses
-//! [rust-gmp](https://docs.rs/rust-gmp).
+//! Module for implementations using [rust-gmp](https://docs.rs/rust-gmp).
+use crate::{
+    BigInt as BigIntTrait,
+    BigIntSub,
+    BigIntAdd,
+    BigIntMul,
+    BigIntDiv,
+};
 use gmp::mpz::Mpz;
 use serde::{
     Serialize, Deserialize,
@@ -10,185 +13,114 @@ use serde::{
     de::{Deserializer, Visitor, SeqAccess},
 };
 
-/// A trait describing an arbitrary precision integer.
-pub trait BigInt:
-    'static
-    + Default
-    + From<i64>
-    + for<'a> From<&'a [u8]>
-    + Clone
-    + Sized
-    + Send
-    + Sync
-    + Eq
-    + PartialOrd
-    + BigIntSub<i64, Output = Self>
-    + for<'a> BigIntAdd<&'a Self, Output = Self>
-    + for<'a> BigIntSub<&'a Self, Output = Self>
-    + for<'a> BigIntMul<&'a Self, Output = Self>
-    + for<'a> BigIntDiv<&'a Self, Output = Self>
-    + Serialize
-    + for <'de> Deserialize<'de>
-    + std::fmt::Debug
-    + std::fmt::Display
-    + std::fmt::LowerHex
-    + std::fmt::UpperHex
-{
-    /// Returns the next prime greater than `self`.
-    fn next_prime(&self) -> Self;
-
-    /// Returns the greatest common divisor of `self` and the coefficients `a`
-    /// and `b` satisfying `a*x + b*y = g`.
-    fn gcdext<'a>(&self, y: &'a Self) -> (Self, Self, Self);
-
-    /// Return the modulus of `self / m`.
-    fn modulus<'a>(&self, m: &'a Self) -> Self;
-
-    /// Returns `self^e mod m`.
-    fn powm<'a>(&self, e: &'a Self, m: &Self) -> Self;
-
-    /// Returns `self^-1 mod m`.
-    fn invert<'a>(&self, m: &'a Self) -> Option<Self>;
-
-    /// Returns the size of the number in bits.
-    fn size_in_bits(&self) -> usize;
-
-    /// Export the number as a u8 vector.
-    fn to_vec(&self) -> Vec<u8>;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) addition.
-pub trait BigIntAdd<T> {
-    type Output;
-    fn add(&self, other: T) -> Self::Output;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) subtraction.
-pub trait BigIntSub<T> {
-    type Output;
-    fn sub(&self, other: T) -> Self::Output;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) multiplication.
-pub trait BigIntMul<T> {
-    type Output;
-    fn mul(&self, other: T) -> Self::Output;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) division.
-pub trait BigIntDiv<T> {
-    type Output;
-    fn div(&self, other: T) -> Self::Output;
-}
-
-/// An implementation of [BigInt](trait.BigInt.html) using
+/// Implementation of [BigInt](trait.BigInt.html) using
 /// [rust-gmp](https://docs.rs/rust-gmp).
-pub struct BigIntGmp {
+pub struct BigInt {
     v: Mpz,
 }
 
-impl Default for BigIntGmp {
+impl Default for BigInt {
     fn default() -> Self {
-        BigIntGmp {
+        BigInt {
             v: 0.into(),
         }
     }
 }
 
-impl From<Mpz> for BigIntGmp {
+impl From<Mpz> for BigInt {
     fn from(other: Mpz) -> Self {
-        BigIntGmp {
+        BigInt {
             v: other,
         }
     }
 }
 
-impl From<&Mpz> for BigIntGmp {
+impl From<&Mpz> for BigInt {
     fn from(other: &Mpz) -> Self {
-        BigIntGmp {
+        BigInt {
             v: other.clone(),
         }
     }
 }
 
-impl From<i64> for BigIntGmp {
+impl From<i64> for BigInt {
     fn from(other: i64) -> Self {
-        BigIntGmp {
+        BigInt {
             v: other.into(),
         }
     }
 }
 
-impl<'a> From<&'a [u8]> for BigIntGmp {
+impl<'a> From<&'a [u8]> for BigInt {
     fn from(other: &'a [u8]) -> Self {
-        BigIntGmp {
+        BigInt {
             v: other.into(),
         }
     }
 }
 
-impl Clone for BigIntGmp {
+impl Clone for BigInt {
     fn clone(&self) -> Self {
-        BigIntGmp {
+        BigInt {
             v: self.v.clone(),
         }
     }
 }
 
-impl Eq for BigIntGmp {}
+impl Eq for BigInt {}
 
-impl PartialEq for BigIntGmp {
+impl PartialEq for BigInt {
     fn eq(&self, other: &Self) -> bool {
         self.v == other.v
     }
 }
 
-impl PartialOrd for BigIntGmp {
+impl PartialOrd for BigInt {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.v.partial_cmp(&other.v)
     }
 }
 
-impl BigIntSub<i64> for BigIntGmp {
+impl BigIntSub<i64> for BigInt {
     type Output = Self;
     fn sub(&self, other: i64) -> Self {
         (&self.v - Mpz::from(other)).into()
     }
 }
 
-impl<'a> BigIntAdd<&'a BigIntGmp> for BigIntGmp {
+impl<'a> BigIntAdd<&'a BigInt> for BigInt {
     type Output = Self;
     fn add(&self, other: &'a Self) -> Self {
         (&self.v + &other.v).into()
     }
 }
 
-impl<'a> BigIntSub<&'a BigIntGmp> for BigIntGmp {
+impl<'a> BigIntSub<&'a BigInt> for BigInt {
     type Output = Self;
     fn sub(&self, other: &'a Self) -> Self {
         (&self.v - &other.v).into()
     }
 }
 
-impl<'a> BigIntMul<&'a BigIntGmp> for BigIntGmp {
+impl<'a> BigIntMul<&'a BigInt> for BigInt {
     type Output = Self;
     fn mul(&self, other: &'a Self) -> Self {
         (&self.v * &other.v).into()
     }
 }
 
-impl<'a> BigIntDiv<&'a BigIntGmp> for BigIntGmp {
+impl<'a> BigIntDiv<&'a BigInt> for BigInt {
     type Output = Self;
     fn div(&self, other: &'a Self) -> Self {
         (&self.v / &other.v).into()
     }
 }
 
-impl BigInt for BigIntGmp {
+impl BigIntTrait for BigInt {
 
     /// ```
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// let x: BigIntGmp = 32.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let x: BigInt = 32.into();
     /// let p = x.next_prime();
     /// assert_eq!(p, 37.into());
     /// ```
@@ -197,9 +129,9 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// let x: BigIntGmp = 240.into();
-    /// let y: BigIntGmp = 46.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let x: BigInt = 240.into();
+    /// let y: clacc::gmp::BigInt = 46.into();
     /// let (g, a, b) = x.gcdext(&y);
     /// assert_eq!(g, 2.into());
     /// assert_eq!(a, (-9).into());
@@ -211,36 +143,36 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// let b: BigIntGmp = 11.into();
-    /// let n: BigIntGmp = 7.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let b: BigInt = 11.into();
+    /// let n: BigInt = 7.into();
     /// let m = b.modulus(&n);
     /// assert_eq!(m, 4.into());
     /// ```
     fn modulus(&self, m: &Self) -> Self {
-        BigIntGmp {
+        BigInt {
             v: self.v.modulus(&m.v),
         }
     }
 
     /// ```
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// let b: BigIntGmp = 5.into();
-    /// let e: BigIntGmp = 3.into();
-    /// let m: BigIntGmp = 13.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let b: BigInt = 5.into();
+    /// let e: BigInt = 3.into();
+    /// let m: BigInt = 13.into();
     /// let c = b.powm(&e, &m);
     /// assert_eq!(c, 8.into());
     /// ```
     fn powm(&self, e: &Self, m: &Self) -> Self {
-        BigIntGmp {
+        BigInt {
             v: self.v.powm(&e.v, &m.v),
         }
     }
 
     /// ```
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// let a: BigIntGmp = 123.into();
-    /// let n: BigIntGmp = 4567.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let a: BigInt = 123.into();
+    /// let n: BigInt = 4567.into();
     /// let i = a.invert(&n).unwrap();
     /// assert_eq!(i, 854.into());
     /// ```
@@ -252,10 +184,10 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// let a: BigIntGmp = 3.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let a: BigInt = 3.into();
     /// assert_eq!(a.size_in_bits(), 2);
-    /// let b: BigIntGmp = 256.into();
+    /// let b: BigInt = 256.into();
     /// assert_eq!(b.size_in_bits(), 9);
     /// ```
     fn size_in_bits(&self) -> usize {
@@ -263,8 +195,8 @@ impl BigInt for BigIntGmp {
     }
 
     /// ```
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// let x: BigIntGmp = 15.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let x: BigInt = 15.into();
     /// assert_eq!(x.to_vec(), vec![0x0f]);
     /// ```
     fn to_vec(&self) -> Vec<u8> {
@@ -272,10 +204,10 @@ impl BigInt for BigIntGmp {
     }
 }
 
-impl Serialize for BigIntGmp {
+impl Serialize for BigInt {
     /// ```
-    /// use clacc::bigint::BigIntGmp;
-    /// let x: BigIntGmp = 6666666666.into();
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let x: BigInt = 6666666666.into();
     /// let bytes = velocypack::to_bytes(&x).unwrap();
     /// let de = velocypack::from_bytes(&bytes).unwrap();
     /// assert_eq!(x, de);
@@ -291,15 +223,15 @@ impl Serialize for BigIntGmp {
     }
 }
 
-impl<'de> Deserialize<'de> for BigIntGmp {
+impl<'de> Deserialize<'de> for BigInt {
     fn deserialize<D>(deserializer: D)
                       -> Result<Self, D::Error>
     where D: Deserializer<'de> {
         struct BigIntVisitor;
         impl<'de> Visitor<'de> for BigIntVisitor {
-            type Value = BigIntGmp;
+            type Value = BigInt;
             fn visit_seq<V>(self, mut visitor: V)
-                            -> Result<BigIntGmp, V::Error>
+                            -> Result<BigInt, V::Error>
             where V: SeqAccess<'de> {
                 let mut vec: Vec<u8> = Vec::new();
                 while match visitor.next_element()? {
@@ -325,7 +257,7 @@ enum HexCase {
     Lower,
 }
 
-impl BigIntGmp {
+impl BigInt {
 
     fn to_hex(
         &self,
@@ -344,7 +276,7 @@ impl BigIntGmp {
 
 }
 
-impl std::fmt::Debug for BigIntGmp {
+impl std::fmt::Debug for BigInt {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>
@@ -353,7 +285,7 @@ impl std::fmt::Debug for BigIntGmp {
     }
 }
 
-impl std::fmt::Display for BigIntGmp {
+impl std::fmt::Display for BigInt {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>
@@ -362,7 +294,7 @@ impl std::fmt::Display for BigIntGmp {
     }
 }
 
-impl std::fmt::LowerHex for BigIntGmp {
+impl std::fmt::LowerHex for BigInt {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>
@@ -371,7 +303,7 @@ impl std::fmt::LowerHex for BigIntGmp {
     }
 }
 
-impl std::fmt::UpperHex for BigIntGmp {
+impl std::fmt::UpperHex for BigInt {
     fn fmt(
         &self, f:
         &mut std::fmt::Formatter<'_>

@@ -3,9 +3,9 @@
 //!
 //! An accumulation is a fixed size digest that, along with the witness of an
 //! element's addition, can be used to prove an element is a member of a set.
-//! The drawback to this solution is that any state changes to the accumulation
-//! invalidate the witneses of the other elements in the set, requiring
-//! computational resources to update them.
+//! The drawback to this solution is that any state changes to the
+//! accumulation invalidate the witneses of the other elements in the set,
+//! requiring computational resources to update them.
 //!
 //! The benefit of CL accumulators is that they support efficient untrusted 
 //! witness updates. The resource intensive task of updating witnesses can be
@@ -23,28 +23,109 @@ use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
 use serde::{Serialize, Deserialize};
 
-pub use typenum;
-pub mod bigint;
-pub mod mapper;
 pub mod ser;
+pub use typenum;
 
-use bigint::BigInt;
-use mapper::Mapper;
+#[cfg(feature = "blake2")]
+pub mod blake2;
+
+#[cfg(feature = "rust-gmp")]
+pub mod gmp;
+
 use ser::{VpackAccumulator, VpackUpdate};
 
 /// The accumulator base.
 const BASE: i64 = 65537;
+
+/// A trait describing an arbitrary precision integer.
+pub trait BigInt:
+    'static
+    + Default
+    + From<i64>
+    + for<'a> From<&'a [u8]>
+    + Clone
+    + Sized
+    + Send
+    + Sync
+    + Eq
+    + PartialOrd
+    + BigIntSub<i64, Output = Self>
+    + for<'a> BigIntAdd<&'a Self, Output = Self>
+    + for<'a> BigIntSub<&'a Self, Output = Self>
+    + for<'a> BigIntMul<&'a Self, Output = Self>
+    + for<'a> BigIntDiv<&'a Self, Output = Self>
+    + Serialize
+    + for <'de> Deserialize<'de>
+    + std::fmt::Debug
+    + std::fmt::Display
+    + std::fmt::LowerHex
+    + std::fmt::UpperHex
+{
+    /// Returns the next prime greater than `self`.
+    fn next_prime(&self) -> Self;
+
+    /// Returns the greatest common divisor of `self` and the coefficients `a`
+    /// and `b` satisfying `a*x + b*y = g`.
+    fn gcdext<'a>(&self, y: &'a Self) -> (Self, Self, Self);
+
+    /// Return the modulus of `self / m`.
+    fn modulus<'a>(&self, m: &'a Self) -> Self;
+
+    /// Returns `self^e mod m`.
+    fn powm<'a>(&self, e: &'a Self, m: &Self) -> Self;
+
+    /// Returns `self^-1 mod m`.
+    fn invert<'a>(&self, m: &'a Self) -> Option<Self>;
+
+    /// Returns the size of the number in bits.
+    fn size_in_bits(&self) -> usize;
+
+    /// Export the number as a u8 vector.
+    fn to_vec(&self) -> Vec<u8>;
+}
+
+/// A trait describing [BigInt](trait.BigInt.html) addition.
+pub trait BigIntAdd<T> {
+    type Output;
+    fn add(&self, other: T) -> Self::Output;
+}
+
+/// A trait describing [BigInt](trait.BigInt.html) subtraction.
+pub trait BigIntSub<T> {
+    type Output;
+    fn sub(&self, other: T) -> Self::Output;
+}
+
+/// A trait describing [BigInt](trait.BigInt.html) multiplication.
+pub trait BigIntMul<T> {
+    type Output;
+    fn mul(&self, other: T) -> Self::Output;
+}
+
+/// A trait describing [BigInt](trait.BigInt.html) division.
+pub trait BigIntDiv<T> {
+    type Output;
+    fn div(&self, other: T) -> Self::Output;
+}
 
 /// Helper function that converts a GenericArray to a BigInt.
 fn to_bigint<T: BigInt, N: ArrayLength<u8>>(x: GenericArray<u8, N>) -> T {
     x.as_slice().into()
 }
 
+/// A trait describing a method for converting some arbitrary data to a fixed
+/// sized digest.
+pub trait Mapper {
+    fn map<N>(x: &[u8]) -> GenericArray<u8, N>
+    where N: ArrayLength<u8>;
+}
+
 /// An accumulator.
 ///
 /// Elements may be added and deleted from the acculumator without increasing
 /// the size of its internal parameters. That is, the number of digits in the
-/// accumulation `z` will never exceed the number of digits in the modulus `n`.
+/// accumulation `z` will never exceed the number of digits in the modulus
+/// `n`.
 #[derive(Clone, Debug)]
 pub struct Accumulator<T> where T: BigInt {
 
@@ -60,17 +141,16 @@ pub struct Accumulator<T> where T: BigInt {
 
 impl<T> Accumulator<T> where T: BigInt {
 
-    /// Initialize an accumulator from private key parameters. All accumulators
-    /// are able to add elements and verify witnesses. An accumulator
-    /// constructed from a private key is able to delete elements and prove
-    /// elements after their addition.
+    /// Initialize an accumulator from private key parameters. All
+    /// accumulators are able to add elements and verify witnesses. An
+    /// accumulator constructed from a private key is able to delete elements
+    /// and prove elements after their addition.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let acc = Accumulator::<BigIntGmp>::with_private_key(
+    /// let acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -86,16 +166,16 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Create an accumulator from a randomly generated private key and return
     /// it along with the generated key parameters.
     ///
-    /// If `key_bits` is `None`, the bit size of the generated modulus is 3072.
+    /// If `key_bits` is `None`, the bit size of the generated modulus is
+    /// 3072.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::{BigInt, BigIntGmp};
-    /// assert_eq!(Accumulator::<BigIntGmp>::with_random_key(None)
+    /// use clacc::{Accumulator, BigInt as BigIntTrait, gmp::BigInt};
+    /// assert_eq!(Accumulator::<BigInt>::with_random_key(None)
     ///            .0
     ///            .get_public_key()
     ///            .size_in_bits(), 3072);
-    /// assert_eq!(Accumulator::<BigIntGmp>::with_random_key(Some(4096))
+    /// assert_eq!(Accumulator::<BigInt>::with_random_key(Some(4096))
     ///            .0
     ///            .get_public_key()
     ///            .size_in_bits(), 4096);
@@ -128,14 +208,14 @@ impl<T> Accumulator<T> where T: BigInt {
         (Accumulator::with_private_key(p.clone(), q.clone()), p, q)
     }
 
-    /// Initialize an accumulator from a public key. An accumulator constructed
-    /// from a public key is only able to add elements and verify witnesses.
+    /// Initialize an accumulator from a public key. An accumulator
+    /// constructed from a public key is only able to add elements and verify
+    /// witnesses.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let acc = Accumulator::<BigIntGmp>::with_public_key(
+    /// let acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// ```
@@ -155,36 +235,30 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Add an element to an accumulator.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// let w = acc.add::<MapBlake2b, U16>(x);
-    /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
+    /// let w = acc.add::<Mapper, U16>(x);
+    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
     /// ```
     ///
-    /// This works with accumulators constructed from a public key or a private
-    /// key.
+    /// This works with accumulators constructed from a public key or a
+    /// private key.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// let w = acc.add::<MapBlake2b, U16>(x);
-    /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
+    /// let w = acc.add::<Mapper, U16>(x);
+    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
     /// ```
     pub fn add<M, N>(&mut self, x: &[u8]) -> Witness<T>
     where M: Mapper, N: ArrayLength<u8> {
@@ -201,38 +275,32 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Delete an element from an accumulator.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// let w = acc.add::<MapBlake2b, U16>(x);
-    /// assert!(acc.del::<MapBlake2b, U16>(x, &w).is_ok());
-    /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_err());
-    /// assert!(acc.del::<MapBlake2b, U16>(x, &w).is_err());
+    /// let w = acc.add::<Mapper, U16>(x);
+    /// assert!(acc.del::<Mapper, U16>(x, &w).is_ok());
+    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_err());
+    /// assert!(acc.del::<Mapper, U16>(x, &w).is_err());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
     /// key.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// let w = acc.add::<MapBlake2b, U16>(x);
-    /// assert!(acc.del::<MapBlake2b, U16>(x, &w).is_err());
+    /// let w = acc.add::<Mapper, U16>(x);
+    /// assert!(acc.del::<Mapper, U16>(x, &w).is_err());
     /// ```
     pub fn del<M, N>(&mut self, x: &[u8], w: &Witness<T>)
                      -> Result<T, &'static str>
@@ -260,37 +328,31 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Generate a witness to an element's addition to the accumulation.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// acc.add::<MapBlake2b, U16>(x);
-    /// let w = acc.prove::<MapBlake2b, U16>(x).unwrap();
-    /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
+    /// acc.add::<Mapper, U16>(x);
+    /// let w = acc.prove::<Mapper, U16>(x).unwrap();
+    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
     /// key.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// acc.add::<MapBlake2b, U16>(x);
-    /// assert!(acc.prove::<MapBlake2b, U16>(x).is_err());
+    /// acc.add::<Mapper, U16>(x);
+    /// assert!(acc.prove::<Mapper, U16>(x).is_err());
     /// ```
     pub fn prove<M, N>(&self, x: &[u8]) -> Result<Witness<T>, &'static str>
     where M: Mapper, N: ArrayLength<u8> {
@@ -317,36 +379,30 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Verify an element is a member of an accumulator.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// let w = acc.add::<MapBlake2b, U16>(x);
-    /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
+    /// let w = acc.add::<Mapper, U16>(x);
+    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
     /// ```
     ///
-    /// This works with accumulators constructed from a public key or a private
-    /// key.
+    /// This works with accumulators constructed from a public key or a
+    /// private key.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
     /// let x = b"abc";
-    /// let w = acc.add::<MapBlake2b, U16>(x);
-    /// assert!(acc.verify::<MapBlake2b, U16>(x, &w).is_ok());
+    /// let w = acc.add::<Mapper, U16>(x);
+    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
     /// ```
     pub fn verify<M, N>(&self, x: &[u8], w: &Witness<T>)
                         -> Result<(), &'static str>
@@ -491,16 +547,17 @@ impl<T> Update<T> where T: BigInt{
     /// previously absorbed into this update struct.
     ///
     /// ```
-    /// use clacc::Accumulator;
-    /// use clacc::Update;
-    /// use clacc::bigint::BigIntGmp;
-    /// use clacc::mapper::MapBlake2b;
-    /// use clacc::typenum::U16;
+    /// use clacc::{
+    ///     Accumulator, Update,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// // In this example, the update will include a deletion, so the
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -511,19 +568,19 @@ impl<T> Update<T> where T: BigInt{
     /// // Create the addition.
     /// let xa = b"ghi";
     /// // Add the deletion element.
-    /// acc.add::<MapBlake2b, U16>(xd);
+    /// acc.add::<Mapper, U16>(xd);
     /// // Add the static element to the accumulator.
-    /// let mut wxs = acc.add::<MapBlake2b, U16>(xs);
+    /// let mut wxs = acc.add::<Mapper, U16>(xs);
     /// // Delete the deletion element from the accumulator.
-    /// let wxd = acc.prove::<MapBlake2b, U16>(xd).unwrap();
-    /// acc.del::<MapBlake2b, U16>(xd, &wxd).unwrap();
+    /// let wxd = acc.prove::<Mapper, U16>(xd).unwrap();
+    /// acc.del::<Mapper, U16>(xd, &wxd).unwrap();
     /// // Create an update object and absorb the addition and deletion.
     /// let mut u = Update::new();
-    /// u.del::<MapBlake2b, U16>(xd, &wxd);
-    /// u.add::<MapBlake2b, U16>(xa, &acc.add::<MapBlake2b, U16>(xa));
+    /// u.del::<Mapper, U16>(xd, &wxd);
+    /// u.add::<Mapper, U16>(xa, &acc.add::<Mapper, U16>(xa));
     /// // Update the static element's witness.
-    /// wxs = u.update_witness::<MapBlake2b, U16>(&acc, xs, &wxs);
-    /// assert!(acc.verify::<MapBlake2b, U16>(xs, &wxs).is_ok());
+    /// wxs = u.update_witness::<Mapper, U16>(&acc, xs, &wxs);
+    /// assert!(acc.verify::<Mapper, U16>(xs, &wxs).is_ok());
     /// ```
     pub fn update_witness<M, N>(
         &self,
@@ -557,7 +614,8 @@ impl<T> Update<T> where T: BigInt{
     /// * `acc` - The current accumulator.
     /// * `s` - Iterator to element-witness pairs of static elements.
     /// * `a` - Iterator to element-witness pairs of added elements.
-    /// * `thread_count` - The number of threads to use. Returns an error if 0.
+    /// * `thread_count` - The number of threads to use. Returns an error if
+    ///    0.
     pub fn update_witnesses<'a, M, N, IS, IA>(
         &self,
         acc: &Accumulator<T>,

@@ -7,9 +7,9 @@ use rand::RngCore;
 use structopt::StructOpt;
 use clacc::{
     Accumulator, Update, Witness,
-    mapper::MapBlake2b,
+    blake2::Mapper,
+    gmp::BigInt,
     typenum::U16,
-    bigint::BigIntGmp,
 };
 
 mod primes;
@@ -51,18 +51,18 @@ fn main() -> Result<(), &'static str> {
     //
 
     // Create accumulator with pregenerated primes.
-    let mut acc = Accumulator::<BigIntGmp>::with_private_key(
+    let mut acc = Accumulator::<BigInt>::with_private_key(
         primes::P.to_vec().as_slice().into(),
         primes::Q.to_vec().as_slice().into(),
     );
     // Create storage for element-witness pairs.
-    let mut deletions: Vec<(Vec<u8>, Witness<BigIntGmp>)> = vec![
+    let mut deletions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
         Default::default(); deletions_count
     ];
-    let mut statics: Vec<(Vec<u8>, Witness<BigIntGmp>)> = vec![
+    let mut statics: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
         Default::default(); statics_count
     ];
-    let mut additions: Vec<(Vec<u8>, Witness<BigIntGmp>)> = vec![
+    let mut additions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
         Default::default(); additions_count
     ];
     let mut rng = rand::thread_rng();
@@ -82,25 +82,25 @@ fn main() -> Result<(), &'static str> {
     }
     // Accumulate bucket elements.
     for deletion in deletions.iter() {
-        acc.add::<MapBlake2b, U16>(&deletion.0);
+        acc.add::<Mapper, U16>(&deletion.0);
     }
     for stat in statics.iter() {
-        acc.add::<MapBlake2b, U16>(&stat.0);
+        acc.add::<Mapper, U16>(&stat.0);
     }
     // Generate witnesses for static elements.
     for stat in statics.iter_mut() {
-        stat.1 = acc.prove::<MapBlake2b, U16>(&stat.0).unwrap();
+        stat.1 = acc.prove::<Mapper, U16>(&stat.0).unwrap();
     }
     // Save accumulation at current state.
     let prev = acc.clone();
     // Accumulate deletions.
     for deletion in deletions.iter_mut() {
-        deletion.1 = acc.prove::<MapBlake2b, U16>(&deletion.0).unwrap();
-        acc.del::<MapBlake2b, U16>(&deletion.0, &deletion.1).unwrap();
+        deletion.1 = acc.prove::<Mapper, U16>(&deletion.0).unwrap();
+        acc.del::<Mapper, U16>(&deletion.0, &deletion.1).unwrap();
     }
     // Accumulate additions.
     for addition in additions.iter_mut() {
-        addition.1 = acc.add::<MapBlake2b, U16>(&addition.0);
+        addition.1 = acc.add::<Mapper, U16>(&addition.0);
         // Use the saved accumulation as the witness value.
         addition.1.set_value(prev.get_value());
     }
@@ -112,14 +112,14 @@ fn main() -> Result<(), &'static str> {
     // Batch updates.
     let mut update = Update::new();
     for deletion in deletions.iter() {
-        update.del::<MapBlake2b, U16>(&deletion.0, &deletion.1);
+        update.del::<Mapper, U16>(&deletion.0, &deletion.1);
     }
     for addition in additions.iter() {
-        update.add::<MapBlake2b, U16>(&addition.0, &addition.1);
+        update.add::<Mapper, U16>(&addition.0, &addition.1);
     }
     // Update witnesses.
     let now = Instant::now();
-    update.update_witnesses::<MapBlake2b, U16, _, _>(
+    update.update_witnesses::<Mapper, U16, _, _>(
         &acc,
         statics.iter_mut(),
         additions.iter_mut(),
@@ -129,10 +129,10 @@ fn main() -> Result<(), &'static str> {
     // Verify results.
     if args.verify {
         for stat in statics.iter() {
-            acc.verify::<MapBlake2b, U16>(&stat.0, &stat.1).unwrap();
+            acc.verify::<Mapper, U16>(&stat.0, &stat.1).unwrap();
         }
         for addition in additions.iter() {
-            acc.verify::<MapBlake2b, U16>(&addition.0, &addition.1).unwrap();
+            acc.verify::<Mapper, U16>(&addition.0, &addition.1).unwrap();
         }
     }
 
