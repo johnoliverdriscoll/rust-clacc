@@ -17,11 +17,11 @@
 //! and is able to add and delete elements while untrusted workers are able to
 //! recalculate witnesses provided they have access to the previous witnesses,
 //! the current state of the accumulator, and its public key.
-use std::sync::{Arc, Mutex};
 use crossbeam::thread;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
 use serde::{Serialize, Deserialize};
+use std::sync::{Arc, Mutex};
 
 pub mod ser;
 pub use typenum;

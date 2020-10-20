@@ -20,9 +20,10 @@ edition = "2018"
 name = "clacc"
 path = "src/clacc.rs"
 
-[[bin]]
-name = "clacc-benchmark"
-path = "src/clacc-benchmark.rs"
+[[bench]]
+name = "bench"
+path = "src/bench.rs"
+harness = false
 
 [features]
 default = ["blake2", "rust-gmp"]
@@ -39,5 +40,5 @@ typenum = "1.12.0"
 velocypack = "0.1.1"
 
 [dev-dependencies]
+criterion = "0.3.3"
 num_cpus = "1.13.0"
-structopt = "0.3.13"

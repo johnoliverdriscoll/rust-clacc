@@ -1,16 +1,16 @@
 //! Module for implementations using [rust-gmp](https://docs.rs/rust-gmp).
+use gmp::mpz::Mpz;
+use serde::{
+    Serialize, Deserialize,
+    ser::{Serializer, SerializeSeq},
+    de::{Deserializer, Visitor, SeqAccess},
+};
 use crate::{
     BigInt as BigIntTrait,
     BigIntSub,
     BigIntAdd,
     BigIntMul,
     BigIntDiv,
-};
-use gmp::mpz::Mpz;
-use serde::{
-    Serialize, Deserialize,
-    ser::{Serializer, SerializeSeq},
-    de::{Deserializer, Visitor, SeqAccess},
 };
 
 /// Implementation of [BigInt](trait.BigInt.html) using
