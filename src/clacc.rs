@@ -23,7 +23,6 @@ use rand::RngCore;
 use serde::{Serialize, Deserialize};
 use std::sync::{Arc, Mutex};
 
-pub mod ser;
 pub use typenum;
 
 #[cfg(feature = "blake2")]
@@ -32,7 +31,8 @@ pub mod blake2;
 #[cfg(feature = "rust-gmp")]
 pub mod gmp;
 
-use ser::{VpackAccumulator, VpackUpdate};
+#[cfg(feature = "velocypack")]
+pub mod velocypack;
 
 /// The accumulator base.
 const BASE: i64 = 65537;
@@ -427,32 +427,6 @@ impl<T> Accumulator<T> where T: BigInt {
 
 }
 
-impl<T> VpackAccumulator<T> for Accumulator<T> where T: BigInt {
-
-    fn ser_add<M, N, S>(&mut self, x: &S) -> Witness<T>
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.add::<M, N>(&velocypack::to_bytes(x).unwrap())
-    }
-
-    fn ser_del<M, N, S>(&mut self, x: &S, w: &Witness<T>)
-                        -> Result<T, &'static str>
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.del::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn ser_prove<M, N, S>(&self, x: &S)
-                          -> Result<Witness<T>, &'static str>
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.prove::<M, N>(&velocypack::to_bytes(x).unwrap())
-    }
-
-    fn ser_verify<M, N, S>(&self, x: &S, w: &Witness<T>)
-                           -> Result<(), &'static str>
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.verify::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-}
-
 impl<T> std::fmt::Display for Accumulator<T> where T: BigInt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
            -> Result<(), std::fmt::Error> {
@@ -614,8 +588,7 @@ impl<T> Update<T> where T: BigInt{
     /// * `acc` - The current accumulator.
     /// * `s` - Iterator to element-witness pairs of static elements.
     /// * `a` - Iterator to element-witness pairs of added elements.
-    /// * `thread_count` - The number of threads to use. Returns an error if
-    ///    0.
+    /// * `thread_count` - The number of threads to use. Returns an error if 0.
     pub fn update_witnesses<'a, M, N, IS, IA>(
         &self,
         acc: &Accumulator<T>,
@@ -634,7 +607,7 @@ impl<T> Update<T> where T: BigInt{
                 x.clone()
             }
         }
-        self.map_update_witnesses::<M, N, Vec<u8>, Raw, IS, IA>(
+        self.serialized_update_witnesses::<M, N, Vec<u8>, Raw, IS, IA>(
             acc,
             s,
             a,
@@ -642,7 +615,15 @@ impl<T> Update<T> where T: BigInt{
         )
     }
 
-    fn map_update_witnesses<'a, M, N, V, S, IS, IA>(
+    /// Serialized version of [update_witnesses](#method.update_witnesses).
+    ///
+    /// Arguments
+    ///
+    /// * `acc` - The current accumulator.
+    /// * `s` - Iterator to element-witness pairs of static elements.
+    /// * `a` - Iterator to element-witness pairs of added elements.
+    /// * `thread_count` - The number of threads to use. Returns an error if 0.
+    pub fn serialized_update_witnesses<'a, M, N, V, S, IS, IA>(
         &self,
         acc: &Accumulator<T>,
         s: IS,
@@ -719,85 +700,7 @@ impl<T> Update<T> where T: BigInt{
     }
 }
 
-trait ElementSerializer<V> {
+/// A trait describing a method for serializing an arbitrary data type.
+pub trait ElementSerializer<V> {
     fn serialize_element(x: &V) -> Vec<u8>;
-}
-
-impl<T: BigInt> VpackUpdate<T> for Update<T> {
-
-    fn ser_add<M, N, S>(&mut self, x: &S, w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.add::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn ser_del<M, N, S>(&mut self, x: &S, w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.del::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn ser_undo_add<M, N, S>(&mut self, x: &S, w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.undo_add::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn ser_undo_del<M, N, S>(&mut self, x: &S, w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.undo_del::<M, N>(&velocypack::to_bytes(x).unwrap(), w)
-    }
-
-    fn ser_update_witness<M, N, S>(
-        &self,
-        acc: &Accumulator<T>,
-        x: &S,
-        w: &Witness<T>
-    ) -> Witness<T>
-    where M: Mapper, N: ArrayLength<u8>, S: Serialize {
-        self.update_witness::<M, N>(
-            acc,
-            &velocypack::to_bytes(x).unwrap(),
-            w
-        )
-    }
-
-    fn ser_update_witnesses<'a, M, N, S, IS, IA>(
-        &self,
-        acc: &Accumulator<T>,
-        s: IS,
-        a: IA,
-        thread_count: usize
-    ) -> Result<(), &'static str>
-    where
-        M: Mapper,
-        N: ArrayLength<u8>,
-        S: Serialize + 'a,
-        IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send,
-        IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send {
-        self.map_update_witnesses::<
-            M,
-            N,
-            S,
-            VpackSerializer<S>,
-            IS,
-            IA,
-         >(acc, s, a, thread_count)
-    }
-}
-
-struct VpackSerializer<S> {
-    phantom: std::marker::PhantomData<S>,
-}
-
-impl<S> ElementSerializer<S> for VpackSerializer<S> where S: Serialize {
-    fn serialize_element(x: &S) -> Vec<u8> {
-        velocypack::to_bytes(x).unwrap()
-    }
-}
-
-impl<T> std::fmt::Display for Update<T> where T: BigInt {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>
-    ) -> Result<(), std::fmt::Error> {
-        f.write_fmt(format_args!("({:x}, {:x})", self.pi_a, self.pi_d))
-    }
 }
