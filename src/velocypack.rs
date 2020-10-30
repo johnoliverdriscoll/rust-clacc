@@ -136,11 +136,11 @@ impl<T: BigInt> VpackUpdate<T> for Update<T> {
         S: Serialize + 'a,
         IS: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send,
         IA: Iterator<Item = &'a mut (S, Witness<T>)> + 'a + Send {
-        self.serialized_update_witnesses::<
+        self.update_witnesses::<
             M,
             N,
-            S,
             VpackSerializer<S>,
+            S,
             IS,
             IA,
          >(acc, s, a, thread_count)

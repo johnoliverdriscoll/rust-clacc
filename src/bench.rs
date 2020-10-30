@@ -1,7 +1,7 @@
 //! Benchmark the performance of updating witnesses with respect to a variable
 //! bucket size of static elements and turnover amount.
 use clacc::{
-    Accumulator, Update, Witness,
+    Accumulator, Update, Witness, RawSerializer as Raw,
     blake2::Mapper,
     gmp::BigInt,
     typenum::U16,
@@ -99,7 +99,7 @@ fn bench(c: &mut Criterion) {
                     update.add::<Mapper, U16>(&addition.0, &addition.1);
                 }
                 // Update.
-                b.iter(|| update.update_witnesses::<Mapper, U16, _, _>(
+                b.iter(|| update.update_witnesses::<Mapper, U16, Raw, _, _, _>(
                     &acc,
                     statics.iter_mut(),
                     additions.iter_mut(),

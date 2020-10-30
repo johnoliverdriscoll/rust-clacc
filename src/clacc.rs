@@ -589,41 +589,7 @@ impl<T> Update<T> where T: BigInt{
     /// * `s` - Iterator to element-witness pairs of static elements.
     /// * `a` - Iterator to element-witness pairs of added elements.
     /// * `thread_count` - The number of threads to use. Returns an error if 0.
-    pub fn update_witnesses<'a, M, N, IS, IA>(
-        &self,
-        acc: &Accumulator<T>,
-        s: IS,
-        a: IA,
-        thread_count: usize
-    ) -> Result<(), &'static str>
-    where
-        M: Mapper,
-        N: ArrayLength<u8>,
-        IS: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a + Send,
-        IA: Iterator<Item = &'a mut (Vec<u8>, Witness<T>)> + 'a + Send {
-        struct Raw;
-        impl ElementSerializer<Vec<u8>> for Raw {
-            fn serialize_element(x: &Vec<u8>) -> Vec<u8> {
-                x.clone()
-            }
-        }
-        self.serialized_update_witnesses::<M, N, Vec<u8>, Raw, IS, IA>(
-            acc,
-            s,
-            a,
-            thread_count
-        )
-    }
-
-    /// Serialized version of [update_witnesses](#method.update_witnesses).
-    ///
-    /// Arguments
-    ///
-    /// * `acc` - The current accumulator.
-    /// * `s` - Iterator to element-witness pairs of static elements.
-    /// * `a` - Iterator to element-witness pairs of added elements.
-    /// * `thread_count` - The number of threads to use. Returns an error if 0.
-    pub fn serialized_update_witnesses<'a, M, N, V, S, IS, IA>(
+    pub fn update_witnesses<'a, M, N, S, V, IS, IA>(
         &self,
         acc: &Accumulator<T>,
         s: IS,
@@ -703,4 +669,12 @@ impl<T> Update<T> where T: BigInt{
 /// A trait describing a method for serializing an arbitrary data type.
 pub trait ElementSerializer<V> {
     fn serialize_element(x: &V) -> Vec<u8>;
+}
+
+pub struct RawSerializer;
+
+impl ElementSerializer<Vec<u8>> for RawSerializer {
+    fn serialize_element(x: &Vec<u8>) -> Vec<u8> {
+        x.clone()
+    }
 }
