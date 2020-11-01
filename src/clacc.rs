@@ -235,34 +235,45 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Add an element to an accumulator.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// let w = acc.add::<Mapper, U16>(x);
-    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
+    /// let x = b"abc".to_vec();
+    /// let w = acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(&x, &w).is_ok());
     /// ```
     ///
     /// This works with accumulators constructed from a public key or a
     /// private key.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// let w = acc.add::<Mapper, U16>(x);
-    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
+    /// let x = b"abc".to_vec();
+    /// let w = acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(&x, &w).is_ok());
     /// ```
-    pub fn add<M, N>(&mut self, x: &[u8]) -> Witness<T>
-    where M: Mapper, N: ArrayLength<u8> {
-        let x = to_bigint::<T, N>(M::map(x));
+    pub fn add<'a, M, N, S, V>(&mut self, v: &'a V) -> Witness<T>
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
+        let s = S::serialize_element(v);
+        let x = to_bigint::<T, N>(M::map(&s));
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -275,43 +286,54 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Delete an element from an accumulator.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// let w = acc.add::<Mapper, U16>(x);
-    /// assert!(acc.del::<Mapper, U16>(x, &w).is_ok());
-    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_err());
-    /// assert!(acc.del::<Mapper, U16>(x, &w).is_err());
+    /// let x = b"abc".to_vec();
+    /// let w = acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// assert!(acc.del::<Mapper, U16, RawSerializer, _>(&x, &w).is_ok());
+    /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(&x, &w).is_err());
+    /// assert!(acc.del::<Mapper, U16, RawSerializer, _>(&x, &w).is_err());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
     /// key.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// let w = acc.add::<Mapper, U16>(x);
-    /// assert!(acc.del::<Mapper, U16>(x, &w).is_err());
+    /// let x = b"abc".to_vec();
+    /// let w = acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// assert!(acc.del::<Mapper, U16, RawSerializer, _>(&x, &w).is_err());
     /// ```
-    pub fn del<M, N>(&mut self, x: &[u8], w: &Witness<T>)
-                     -> Result<T, &'static str>
-    where M: Mapper, N: ArrayLength<u8> {
+    pub fn del<'a, M, N, S, V>(&mut self, v: &'a V, w: &Witness<T>)
+                               -> Result<T, &'static str>
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
+        let s = S::serialize_element(v);
+        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
         }
@@ -328,41 +350,53 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Generate a witness to an element's addition to the accumulation.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// acc.add::<Mapper, U16>(x);
-    /// let w = acc.prove::<Mapper, U16>(x).unwrap();
-    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
+    /// let x = b"abc".to_vec();
+    /// acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// let w = acc.prove::<Mapper, U16, RawSerializer, _>(&x).unwrap();
+    /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(&x, &w).is_ok());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
     /// key.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// acc.add::<Mapper, U16>(x);
-    /// assert!(acc.prove::<Mapper, U16>(x).is_err());
+    /// let x = b"abc".to_vec();
+    /// acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// assert!(acc.prove::<Mapper, U16, RawSerializer, _>(&x).is_err());
     /// ```
-    pub fn prove<M, N>(&self, x: &[u8]) -> Result<Witness<T>, &'static str>
-    where M: Mapper, N: ArrayLength<u8> {
+    pub fn prove<'a, M, N, S, V>(&self, v: &'a V)
+                             -> Result<Witness<T>, &'static str>
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let x = to_bigint::<T, N>(M::map(x));
+        let s = S::serialize_element(v);
+        let x = to_bigint::<T, N>(M::map(&s));
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -379,35 +413,46 @@ impl<T> Accumulator<T> where T: BigInt {
     /// Verify an element is a member of an accumulator.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// let w = acc.add::<Mapper, U16>(x);
-    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
+    /// let x = b"abc".to_vec();
+    /// let w = acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(&x, &w).is_ok());
     /// ```
     ///
     /// This works with accumulators constructed from a public key or a
     /// private key.
     ///
     /// ```
-    /// use clacc::{Accumulator, blake2::Mapper, gmp::BigInt, typenum::U16};
+    /// use clacc::{
+    ///     Accumulator, RawSerializer,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
-    /// let x = b"abc";
-    /// let w = acc.add::<Mapper, U16>(x);
-    /// assert!(acc.verify::<Mapper, U16>(x, &w).is_ok());
+    /// let x = b"abc".to_vec();
+    /// let w = acc.add::<Mapper, U16, RawSerializer, _>(&x);
+    /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(&x, &w).is_ok());
     /// ```
-    pub fn verify<M, N>(&self, x: &[u8], w: &Witness<T>)
+    pub fn verify<'a, M, N, S, V>(&self, v: &'a V, w: &Witness<T>)
                         -> Result<(), &'static str>
-    where M: Mapper, N: ArrayLength<u8> {
-        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
+        let s = S::serialize_element(v);
+        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             Err("x not in z")
         } else {
@@ -490,30 +535,34 @@ impl<T> Update<T> where T: BigInt{
     }
 
     /// Absorb an element that must be added to a witness.
-    pub fn add<M, N>(&mut self, x: &[u8], w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8> {
-        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
+    pub fn add<'a, M, N, S, V>(&mut self, v: &'a V, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
+        let s = S::serialize_element(v);
+        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
         self.pi_a = self.pi_a.mul(&x_p);
     }
 
     /// Absorb an element that must be deleted from a witness.
-    pub fn del<M, N>(&mut self, x: &[u8], w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8> {
-        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
+    pub fn del<'a, M, N, S, V>(&mut self, v: &'a V, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
+        let s = S::serialize_element(v);
+        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
         self.pi_d = self.pi_d.mul(&x_p);
     }
 
     /// Undo an absorbed element's addition into an update.
-    pub fn undo_add<M, N>(&mut self, x: &[u8], w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8> {
-        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
+    pub fn undo_add<'a, M, N, S, V>(&mut self, v: &'a V, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
+        let s = S::serialize_element(v);
+        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
         self.pi_a = self.pi_a.div(&x_p);
     }
 
     /// Undo an absorbed element's deletion from an update.
-    pub fn undo_del<M, N>(&mut self, x: &[u8], w: &Witness<T>)
-    where M: Mapper, N: ArrayLength<u8> {
-        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
+    pub fn undo_del<'a, M, N, S, V>(&mut self, v: &'a V, w: &Witness<T>)
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
+        let s = S::serialize_element(v);
+        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
         self.pi_d = self.pi_a.div(&x_p);
     }
 
@@ -522,7 +571,7 @@ impl<T> Update<T> where T: BigInt{
     ///
     /// ```
     /// use clacc::{
-    ///     Accumulator, Update,
+    ///     Accumulator, Update, RawSerializer,
     ///     blake2::Mapper,
     ///     gmp::BigInt,
     ///     typenum::U16,
@@ -536,34 +585,45 @@ impl<T> Update<T> where T: BigInt{
     ///     q.as_slice().into()
     /// );
     /// // Create the static element.
-    /// let xs = b"abc";
+    /// let xs = b"abc".to_vec();
     /// // Create the deletion.
-    /// let xd = b"def";
+    /// let xd = b"def".to_vec();
     /// // Create the addition.
-    /// let xa = b"ghi";
+    /// let xa = b"ghi".to_vec();
     /// // Add the deletion element.
-    /// acc.add::<Mapper, U16>(xd);
+    /// acc.add::<Mapper, U16, RawSerializer, _>(&xd);
     /// // Add the static element to the accumulator.
-    /// let mut wxs = acc.add::<Mapper, U16>(xs);
+    /// let mut wxs = acc.add::<Mapper, U16, RawSerializer, _>(&xs);
     /// // Delete the deletion element from the accumulator.
-    /// let wxd = acc.prove::<Mapper, U16>(xd).unwrap();
-    /// acc.del::<Mapper, U16>(xd, &wxd).unwrap();
+    /// let wxd = acc.prove::<Mapper, U16, RawSerializer, _>(&xd).unwrap();
+    /// acc.del::<Mapper, U16, RawSerializer, _>(&xd, &wxd).unwrap();
     /// // Create an update object and absorb the addition and deletion.
     /// let mut u = Update::new();
-    /// u.del::<Mapper, U16>(xd, &wxd);
-    /// u.add::<Mapper, U16>(xa, &acc.add::<Mapper, U16>(xa));
+    /// u.del::<Mapper, U16, RawSerializer, _>(&xd, &wxd);
+    /// u.add::<Mapper, U16, RawSerializer, _>(
+    ///     &xa,
+    ///     &acc.add::<Mapper, U16, RawSerializer, _>(&xa),
+    /// );
     /// // Update the static element's witness.
-    /// wxs = u.update_witness::<Mapper, U16>(&acc, xs, &wxs);
-    /// assert!(acc.verify::<Mapper, U16>(xs, &wxs).is_ok());
+    /// wxs = u.update_witness::<Mapper, U16, RawSerializer, _>(
+    ///     &acc,
+    ///     &xs,
+    ///     &wxs,
+    /// );
+    /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(
+    ///     &xs,
+    ///     &wxs).is_ok()
+    /// );
     /// ```
-    pub fn update_witness<M, N>(
+    pub fn update_witness<'a, M, N, S, V>(
         &self,
         acc: &Accumulator<T>,
-        x: &[u8],
-        w: &Witness<T>
+        v: &'a V,
+        w: &Witness<T>,
     ) -> Witness<T>
-    where M: Mapper, N: ArrayLength<u8> {
-        let x_p = to_bigint::<T, N>(M::map(x)).add(&w.nonce);
+    where M: Mapper, N: ArrayLength<u8>, V: 'a, S: ElementSerializer<V> {
+        let s = S::serialize_element(v);
+        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
             u: w.u.powm(&a.mul(&self.pi_a), &acc.n)
@@ -594,7 +654,7 @@ impl<T> Update<T> where T: BigInt{
         acc: &Accumulator<T>,
         s: IS,
         a: IA,
-        thread_count: usize
+        thread_count: usize,
     ) -> Result<(), &'static str>
     where
         M: Mapper,
@@ -640,19 +700,18 @@ impl<T> Update<T> where T: BigInt{
                                 }
                             };
                         }
-                        let element = S::serialize_element(&pair.0);
                         if is_static {
-                            pair.1 = update.update_witness::<M, N>(
+                            pair.1 = update.update_witness::<M, N, S, V>(
                                 &acc,
-                                &element,
+                                &pair.0,
                                 &pair.1
                             );
                         } else {
                             let mut u = update.clone();
-                            u.undo_add::<M, N>(&element, &pair.1);
-                            pair.1 = u.update_witness::<M, N>(
+                            u.undo_add::<M, N, S, V>(&pair.0, &pair.1);
+                            pair.1 = u.update_witness::<M, N, S, V>(
                                 &acc,
-                                &element,
+                                &pair.0,
                                 &pair.1
                             );
                         }
@@ -666,11 +725,21 @@ impl<T> Update<T> where T: BigInt{
     }
 }
 
+impl<T> std::fmt::Display for Update<T> where T: BigInt {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>
+    ) -> Result<(), std::fmt::Error> {
+        f.write_fmt(format_args!("({:x}, {:x})", self.pi_a, self.pi_d))
+    }
+}
+
 /// A trait describing a method for serializing an arbitrary data type.
 pub trait ElementSerializer<V> {
     fn serialize_element(x: &V) -> Vec<u8>;
 }
 
+/// An element serializer that returns a clone of the element.
 pub struct RawSerializer;
 
 impl ElementSerializer<Vec<u8>> for RawSerializer {

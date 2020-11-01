@@ -68,35 +68,43 @@ fn bench(c: &mut Criterion) {
                 }
                 // Accumulate bucket elements.
                 for deletion in deletions.iter() {
-                    acc.add::<Mapper, U16>(&deletion.0);
+                    acc.add::<Mapper, U16, Raw, _>(&deletion.0);
                 }
                 for stat in statics.iter() {
-                    acc.add::<Mapper, U16>(&stat.0);
+                    acc.add::<Mapper, U16, Raw, _>(&stat.0);
                 }
                 // Generate witnesses for static elements.
                 for stat in statics.iter_mut() {
-                    stat.1 = acc.prove::<Mapper, U16>(&stat.0).unwrap();
+                    stat.1 = acc.prove::<Mapper, U16, Raw, _>(
+                        &stat.0,
+                    ).unwrap();
                 }
                 // Save accumulation at current state.
                 let prev = acc.clone();
                 // Accumulate deletions.
                 for del in deletions.iter_mut() {
-                    del.1 = acc.prove::<Mapper, U16>(&del.0).unwrap();
-                    acc.del::<Mapper, U16>(&del.0, &del.1).unwrap();
+                    del.1 = acc.prove::<Mapper, U16, Raw, _>(&del.0).unwrap();
+                    acc.del::<Mapper, U16, Raw, _>(&del.0, &del.1).unwrap();
                 }
                 // Accumulate additions.
                 for addition in additions.iter_mut() {
-                    addition.1 = acc.add::<Mapper, U16>(&addition.0);
+                    addition.1 = acc.add::<Mapper, U16, Raw, _>(&addition.0);
                     // Use the saved accumulation as the witness value.
                     addition.1.set_value(prev.get_value());
                 }
                 // Batch updates.
                 let mut update = Update::new();
                 for deletion in deletions.iter() {
-                    update.del::<Mapper, U16>(&deletion.0, &deletion.1);
+                    update.del::<Mapper, U16, Raw, _>(
+                        &deletion.0,
+                        &deletion.1,
+                    );
                 }
                 for addition in additions.iter() {
-                    update.add::<Mapper, U16>(&addition.0, &addition.1);
+                    update.add::<Mapper, U16, Raw, _>(
+                        &addition.0,
+                        &addition.1,
+                    );
                 }
                 // Update.
                 b.iter(|| update.update_witnesses::<Mapper, U16, Raw, _, _, _>(
