@@ -182,7 +182,7 @@ impl<T> Accumulator<T> where T: BigInt {
     /// ```
     pub fn with_random_key(
         key_bits: Option<usize>
-    ) -> (Accumulator<T>, T, T) {
+    ) -> (Self, T, T) {
         let mut rng = rand::thread_rng();
         let mod_bits = match key_bits {
             Some(bits) => bits,
