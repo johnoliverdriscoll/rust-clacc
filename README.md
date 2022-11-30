@@ -5,8 +5,7 @@
 # rust-clacc
 
 This is a Rust implementanion of a CL universal accumulator as described
-in (Efficient oblivious transfer with membership verification)
-[https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645]
+in [Efficient oblivious transfer with membership verification][1].
 
 An accumulation is a fixed size digest that, along with the witness of an
 element's addition, can be used to prove an element is a member of a set.
@@ -24,3 +23,5 @@ memory- and processing-constrained. The authority controls the private key
 and is able to add and delete elements while untrusted workers are able to
 recalculate witnesses provided they have access to the previous witnesses,
 the current state of the accumulator, and its public key.
+
+[1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
