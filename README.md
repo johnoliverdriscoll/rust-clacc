@@ -5,7 +5,8 @@
 # rust-clacc
 
 This is a Rust implementanion of a CL universal accumulator as described
-[here](http://groups.csail.mit.edu/cis/pubs/lysyanskaya/cl02a.pdf).
+in (Efficient oblivious transfer with membership verification)
+[https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645]
 
 An accumulation is a fixed size digest that, along with the witness of an
 element's addition, can be used to prove an element is a member of a set.
