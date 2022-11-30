@@ -7,10 +7,6 @@ use serde::{
 };
 use crate::{
     BigInt as BigIntTrait,
-    BigIntSub,
-    BigIntAdd,
-    BigIntMul,
-    BigIntDiv,
 };
 
 /// Implementation of [BigInt](trait.BigInt.html) using
@@ -81,51 +77,50 @@ impl PartialOrd for BigInt {
     }
 }
 
-impl BigIntSub<i64> for BigInt {
-    type Output = Self;
-    fn sub(&self, other: i64) -> Self {
-        (&self.v - Mpz::from(other)).into()
-    }
-}
-
-impl<'a> BigIntAdd<&'a BigInt> for BigInt {
-    type Output = Self;
-    fn add(&self, other: &'a Self) -> Self {
-        (&self.v + &other.v).into()
-    }
-}
-
-impl<'a> BigIntSub<&'a BigInt> for BigInt {
-    type Output = Self;
-    fn sub(&self, other: &'a Self) -> Self {
-        (&self.v - &other.v).into()
-    }
-}
-
-impl<'a> BigIntMul<&'a BigInt> for BigInt {
-    type Output = Self;
-    fn mul(&self, other: &'a Self) -> Self {
-        (&self.v * &other.v).into()
-    }
-}
-
-impl<'a> BigIntDiv<&'a BigInt> for BigInt {
-    type Output = Self;
-    fn div(&self, other: &'a Self) -> Self {
-        (&self.v / &other.v).into()
-    }
-}
-
 impl BigIntTrait for BigInt {
 
     /// ```
     /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
-    /// let x: BigInt = 32.into();
-    /// let p = x.next_prime();
-    /// assert_eq!(p, 37.into());
+    /// let a: BigInt = 18.into();
+    /// let b: BigInt = 2.into();
+    /// let c = a.add(&b);
+    /// assert_eq!(c, (18 + 2).into());
     /// ```
-    fn next_prime(&self) -> Self {
-        self.v.nextprime().into()
+    fn add(&self, other: &Self) -> Self {
+        (&self.v + &other.v).into()
+    }
+
+    /// ```
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let a: BigInt = 18.into();
+    /// let b: BigInt = 2.into();
+    /// let c = a.sub(&b);
+    /// assert_eq!(c, (18 - 2).into());
+    /// ```
+    fn sub(&self, other: &Self) -> Self {
+        (&self.v - &other.v).into()
+    }
+
+    /// ```
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let a: BigInt = 18.into();
+    /// let b: BigInt = 2.into();
+    /// let c = a.mul(&b);
+    /// assert_eq!(c, (18 * 2).into());
+    /// ```
+    fn mul(&self, other: &Self) -> Self {
+        (&self.v * &other.v).into()
+    }
+
+    /// ```
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let a: BigInt = 18.into();
+    /// let b: BigInt = 2.into();
+    /// let c = a.div(&b);
+    /// assert_eq!(c, (18 / 2).into());
+    /// ```
+    fn div(&self, other: &Self) -> Self {
+        (&self.v / &other.v).into()
     }
 
     /// ```
@@ -181,6 +176,16 @@ impl BigIntTrait for BigInt {
             Some(v) => Some(v.into()),
             None => None,
         }
+    }
+
+    /// ```
+    /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};
+    /// let x: BigInt = 32.into();
+    /// let p = x.next_prime();
+    /// assert_eq!(p, 37.into());
+    /// ```
+    fn next_prime(&self) -> Self {
+        self.v.nextprime().into()
     }
 
     /// ```

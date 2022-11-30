@@ -49,11 +49,6 @@ pub trait BigInt:
     + Sync
     + Eq
     + PartialOrd
-    + BigIntSub<i64, Output = Self>
-    + for<'a> BigIntAdd<&'a Self, Output = Self>
-    + for<'a> BigIntSub<&'a Self, Output = Self>
-    + for<'a> BigIntMul<&'a Self, Output = Self>
-    + for<'a> BigIntDiv<&'a Self, Output = Self>
     + Serialize
     + for <'de> Deserialize<'de>
     + std::fmt::Debug
@@ -61,8 +56,17 @@ pub trait BigInt:
     + std::fmt::LowerHex
     + std::fmt::UpperHex
 {
-    /// Returns the next prime greater than `self`.
-    fn next_prime(&self) -> Self;
+    /// Returns `self + other`.
+    fn add<'a>(&self, other: &'a Self) -> Self;
+
+    /// Returns `self - other`.
+    fn sub<'a>(&self, other: &'a Self) -> Self;
+
+    /// Returns `self * other`.
+    fn mul<'a>(&self, other: &'a Self) -> Self;
+
+    /// Returns `self / other`.
+    fn div<'a>(&self, other: &'a Self) -> Self;
 
     /// Returns the greatest common divisor of `self` and the coefficients `a`
     /// and `b` satisfying `a*x + b*y = g`.
@@ -77,35 +81,14 @@ pub trait BigInt:
     /// Returns `self^-1 mod m`.
     fn invert<'a>(&self, m: &'a Self) -> Option<Self>;
 
+    /// Returns the next prime greater than `self`.
+    fn next_prime(&self) -> Self;
+
     /// Returns the size of the number in bits.
     fn size_in_bits(&self) -> usize;
 
     /// Export the number as a u8 vector.
     fn to_vec(&self) -> Vec<u8>;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) addition.
-pub trait BigIntAdd<T> {
-    type Output;
-    fn add(&self, other: T) -> Self::Output;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) subtraction.
-pub trait BigIntSub<T> {
-    type Output;
-    fn sub(&self, other: T) -> Self::Output;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) multiplication.
-pub trait BigIntMul<T> {
-    type Output;
-    fn mul(&self, other: T) -> Self::Output;
-}
-
-/// A trait describing [BigInt](trait.BigInt.html) division.
-pub trait BigIntDiv<T> {
-    type Output;
-    fn div(&self, other: T) -> Self::Output;
 }
 
 /// Helper function that converts a GenericArray to a BigInt.
@@ -157,7 +140,7 @@ impl<T> Accumulator<T> where T: BigInt {
     /// ```
     pub fn with_private_key(p: T, q: T) -> Self {
         Accumulator {
-            d: Some(p.sub(1).mul(&q.sub(1))),
+            d: Some(p.sub(&1.into()).mul(&q.sub(&1.into()))),
             n: p.mul(&q),
             z: BASE.into(),
         }
