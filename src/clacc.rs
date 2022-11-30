@@ -1,5 +1,6 @@
 //! This is a Rust implementanion of a CL universal accumulator as described
-//! [here](http://groups.csail.mit.edu/cis/pubs/lysyanskaya/cl02a.pdf).
+//! in (Efficient oblivious transfer with membership verification)
+//! [https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645]
 //!
 //! An accumulation is a fixed size digest that, along with the witness of an
 //! element's addition, can be used to prove an element is a member of a set.
@@ -17,7 +18,6 @@
 //! and is able to add and delete elements while untrusted workers are able to
 //! recalculate witnesses provided they have access to the previous witnesses,
 //! the current state of the accumulator, and its public key.
-use crossbeam::thread;
 use generic_array::{ArrayLength, GenericArray};
 use rand::RngCore;
 use serde::{Serialize, Deserialize};
@@ -501,7 +501,7 @@ impl<T> std::fmt::Display for Witness<T> where T: BigInt {
 }
 
 /// A sum of updates to be applied to witnesses.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Update<T> where T: BigInt {
     pi_a: T,
     pi_d: T,
@@ -595,8 +595,8 @@ impl<T> Update<T> where T: BigInt{
     /// );
     /// assert!(acc.verify::<Mapper, U16, RawSerializer, _>(
     ///     &xs,
-    ///     &wxs).is_ok()
-    /// );
+    ///     &wxs,
+    /// ).is_ok());
     /// ```
     pub fn update_witness<'a, M, N, S, V>(
         &self,
@@ -615,9 +615,13 @@ impl<T> Update<T> where T: BigInt{
         }
     }
 
-    /// Multithreaded version of `update_witness` that can update multiple
-    /// witnesses and automatically manage updates applied to newly added
-    /// elements.
+    /// Thread-safe method that updates multiple witnesses.
+    ///
+    /// This method operates on atomic references to iterators over collections
+    /// of element-witness pairs so that the application can invoke it
+    /// concurrently. All concurrently running invocations will finish when
+    /// the iterators have reached the end of their collections. A usage
+    /// example can be found in this crate's benchmarks.
     ///
     /// It is assumed that the additional elements have been absorbed by the
     /// update and that their witnesses are the accumulator's value before any
@@ -626,84 +630,152 @@ impl<T> Update<T> where T: BigInt{
     /// acheived by simply removing its respective element from the update and
     /// applying the result to its witness.
     ///
-    /// Arguments
-    ///
-    /// * `acc` - The current accumulator.
-    /// * `s` - Iterator to element-witness pairs of static elements.
-    /// * `a` - Iterator to element-witness pairs of added elements.
-    /// * `thread_count` - The number of threads to use. Returns an error if 0.
-    pub fn update_witnesses<'a, M, N, S, V, IS, IA>(
+    /// ```
+    /// use clacc::{
+    ///     Accumulator, Update, Witness, RawSerializer as Raw,
+    ///     blake2::Mapper as Map,
+    ///     gmp::BigInt,
+    ///     typenum::U16,
+    /// };
+    /// use rand::RngCore;
+    /// use std::sync::{Arc, Mutex};
+    /// // Create elements.
+    /// const BUCKET_SIZE: usize = 20;
+    /// const DELETIONS_COUNT: usize = 2;
+    /// const ADDITIONS_COUNT: usize = 10;
+    /// const STATICELS_COUNT: usize = BUCKET_SIZE - DELETIONS_COUNT;
+    /// let mut deletions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    ///     Default::default(); DELETIONS_COUNT
+    /// ];
+    /// let mut additions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    ///     Default::default(); ADDITIONS_COUNT
+    /// ];
+    /// let mut staticels: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    ///     Default::default(); STATICELS_COUNT
+    /// ];
+    /// let mut rng = rand::thread_rng();
+    /// let mut bytes = vec![0; 8];
+    /// for deletion in deletions.iter_mut() {
+    ///     rng.fill_bytes(&mut bytes);
+    ///     deletion.0 = bytes.clone();
+    /// }
+    /// for addition in additions.iter_mut() {
+    ///     rng.fill_bytes(&mut bytes);
+    ///     addition.0 = bytes.clone();
+    /// }
+    /// for staticel in staticels.iter_mut() {
+    ///     rng.fill_bytes(&mut bytes);
+    ///     staticel.0 = bytes.clone();
+    /// }
+    /// // Create accumulator with private key.
+    /// let p = vec![0x3d];
+    /// let q = vec![0x35];
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
+    /// // Accumulate elements.
+    /// for deletion in deletions.iter() {
+    ///     acc.add::<Map, U16, Raw, _>(&deletion.0);
+    /// }
+    /// for stat in staticels.iter() {
+    ///     acc.add::<Map, U16, Raw, _>(&stat.0);
+    /// }
+    /// // Generate witnesses for static elements.
+    /// for stat in staticels.iter_mut() {
+    ///     stat.1 = acc.prove::<Map, U16, Raw, _>(
+    ///         &stat.0,
+    ///     ).unwrap();
+    /// }
+    /// // Save accumulation at current state.
+    /// let prev = acc.clone();
+    /// // Accumulate deletions.
+    /// for del in deletions.iter_mut() {
+    ///     del.1 = acc.prove::<Map, U16, Raw, _>(&del.0).unwrap();
+    ///     acc.del::<Map, U16, Raw, _>(&del.0, &del.1).unwrap();
+    /// }
+    /// // Accumulate additions.
+    /// for addition in additions.iter_mut() {
+    ///     addition.1 = acc.add::<Map, U16, Raw, _>(&addition.0);
+    ///     // Use the saved accumulation as the witness value.
+    ///     addition.1.set_value(prev.get_value());
+    /// }
+    /// // Batch updates.
+    /// let mut update = Update::new();
+    /// for deletion in deletions.iter() {
+    ///     update.del::<Map, U16, Raw, _>(
+    ///         &deletion.0,
+    ///         &deletion.1,
+    ///     );
+    /// }
+    /// for addition in additions.iter() {
+    ///     update.add::<Map, U16, Raw, _>(
+    ///         &addition.0,
+    ///         &addition.1,
+    ///     );
+    /// }
+    /// // Update all witnesses.
+    /// update.update_witnesses::<Map, U16, Raw, _, _>(
+    ///     &acc,
+    ///     Arc::new(Mutex::new(additions.iter_mut())),
+    ///     Arc::new(Mutex::new(staticels.iter_mut())),
+    /// );
+    /// // Verify all updated witnesses.
+    /// for addition in additions.iter() {
+    ///     assert!(acc.verify::<Map, U16, Raw, _>(
+    ///         &addition.0,
+    ///         &addition.1,
+    ///     ).is_ok());
+    /// }
+    /// for staticel in staticels.iter() {
+    ///     assert!(acc.verify::<Map, U16, Raw, _>(
+    ///         &staticel.0,
+    ///         &staticel.1,
+    ///     ).is_ok());
+    /// }
+    /// ```
+    pub fn update_witnesses<'a, M, N, S, V, I>(
         &self,
         acc: &Accumulator<T>,
-        s: IS,
-        a: IA,
-        thread_count: usize,
-    ) -> Result<(), &'static str>
+        additions: Arc<Mutex<I>>,
+        staticels: Arc<Mutex<I>>,
+    )
     where
         M: Mapper,
         N: ArrayLength<u8>,
         V: 'a,
         S: ElementSerializer<V>,
-        IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send,
-        IA: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send {
-        // Wrap iterator as atomic pointer.
-        let s = Arc::new(Mutex::new(s));
-        let a = Arc::new(Mutex::new(a));
-        // Sanity check thread count.
-        if thread_count == 0 {
-            return Err("thread_count is 0");
-        }
-        // Create threads.
-        match thread::scope(|scope| {
-            for _ in 0..thread_count {
-                let update = self.clone();
-                let acc = acc.clone();
-                let s = Arc::clone(&s);
-                let a = Arc::clone(&a);
-                scope.spawn(move |_| {
-                    loop {
-                        let pair;
-                        let is_static;
-                        {
-                            let mut s = s.lock().unwrap();
-                            let mut a = a.lock().unwrap();
-                            match s.next() {
-                                Some(next) => {
-                                    pair = next;
-                                    is_static = true;
-                                },
-                                None => {
-                                    match a.next() {
-                                        Some(next) => {
-                                            pair = next;
-                                            is_static = false;
-                                        },
-                                        None => break,
-                                    }
-                                }
-                            };
-                        }
-                        if is_static {
-                            pair.1 = update.update_witness::<M, N, S, V>(
-                                &acc,
-                                &pair.0,
-                                &pair.1
-                            );
-                        } else {
-                            let mut u = update.clone();
-                            u.undo_add::<M, N, S, V>(&pair.0, &pair.1);
-                            pair.1 = u.update_witness::<M, N, S, V>(
-                                &acc,
-                                &pair.0,
-                                &pair.1
-                            );
+        I: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send {
+        loop {
+            let pair;
+            let is_static;
+            {
+                let mut s = staticels.lock().unwrap();
+                match s.next() {
+                    Some(next) => {
+                        pair = next;
+                        is_static = true;
+                    },
+                    None => {
+                        let mut a = additions.lock().unwrap();
+                        match a.next() {
+                            Some(next) => {
+                                pair = next;
+                                is_static = false;
+                            },
+                            None => break,
                         }
                     }
-                });
+                };
             }
-        }) {
-            Ok(()) => Ok(()),
-            Err(_) => Err("error occured in thread"),
+            let mut u = self;
+            let mut clone;
+            if !is_static {
+                clone = self.clone();
+                clone.undo_add::<M, N, S, V>(&pair.0, &pair.1);
+                u = &clone;
+            }
+            pair.1 = u.update_witness::<M, N, S, V>(acc, &pair.0, &pair.1);
         }
     }
 }
