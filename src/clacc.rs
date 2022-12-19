@@ -39,9 +39,8 @@ pub mod velocypack;
 const BASE: i64 = 65537;
 
 /// A trait describing an arbitrary precision integer.
-pub trait BigInt:
-    'static
-    + Default
+pub trait BigInt<'bi>:
+    Default
     + From<i64>
     + for<'a> From<&'a [u8]>
     + Clone
@@ -93,7 +92,7 @@ pub trait BigInt:
 }
 
 /// Helper function that converts a GenericArray to a BigInt.
-fn to_bigint<T: BigInt, N: ArrayLength<u8>>(x: GenericArray<u8, N>) -> T {
+fn to_bigint<T: for<'a> BigInt<'a>, N: ArrayLength<u8>>(x: GenericArray<u8, N>) -> T {
     x.as_slice().into()
 }
 
@@ -111,7 +110,7 @@ pub trait Mapper {
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<T> where T: BigInt {
+pub struct Accumulator<T> where T: for<'a> BigInt<'a> {
 
     /// The current accumulation value.
     z: T,
@@ -123,7 +122,7 @@ pub struct Accumulator<T> where T: BigInt {
     n: T,
 }
 
-impl<T> Accumulator<T> where T: BigInt {
+impl<T> Accumulator<T> where T: for<'a> BigInt<'a> {
 
     /// Initialize an accumulator from private key parameters. All
     /// accumulators are able to add elements and verify witnesses. An
@@ -456,7 +455,7 @@ impl<T> Accumulator<T> where T: BigInt {
 
 }
 
-impl<T> std::fmt::Display for Accumulator<T> where T: BigInt {
+impl<T> std::fmt::Display for Accumulator<T> where T: for<'a> BigInt<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
            -> Result<(), std::fmt::Error> {
         match self.d.as_ref() {
@@ -470,7 +469,7 @@ impl<T> std::fmt::Display for Accumulator<T> where T: BigInt {
 /// A witness of an element's membership in an accumulator.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(bound = "T: Serialize, for<'a> T: Deserialize<'a>")]
-pub struct Witness<T> where T: BigInt {
+pub struct Witness<T> where T: for<'a> BigInt<'a> {
 
     /// The accumulation value less the element.
     pub u: T,
@@ -480,7 +479,7 @@ pub struct Witness<T> where T: BigInt {
     pub nonce: T,
 }
 
-impl<T> Witness<T> where T: BigInt{
+impl<T> Witness<T> where T: for<'a> BigInt<'a> {
 
     /// Return the witness value as a BigInt.
     pub fn get_value(&self) -> T {
@@ -494,7 +493,7 @@ impl<T> Witness<T> where T: BigInt{
 
 }
 
-impl<T> std::fmt::Display for Witness<T> where T: BigInt {
+impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
            -> Result<(), std::fmt::Error> {
         f.write_fmt(format_args!("({:x}, {:x})", self.u, self.nonce))
@@ -503,12 +502,12 @@ impl<T> std::fmt::Display for Witness<T> where T: BigInt {
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Clone, Debug, Default)]
-pub struct Update<T> where T: BigInt {
+pub struct Update<T> where T: for<'a> BigInt<'a> {
     pi_a: T,
     pi_d: T,
 }
 
-impl<T> Update<T> where T: BigInt{
+impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
 
     /// Create a new batched update.
     pub fn new() -> Self {
@@ -781,7 +780,7 @@ impl<T> Update<T> where T: BigInt{
     }
 }
 
-impl<T> std::fmt::Display for Update<T> where T: BigInt {
+impl<T> std::fmt::Display for Update<T> where T: for<'a> BigInt<'a> {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>
