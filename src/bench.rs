@@ -15,7 +15,6 @@ use criterion::{
     Throughput,
     criterion_group, criterion_main,
 };
-use core::time::Duration;
 use crossbeam::thread;
 use num_cpus;
 use rand::RngCore;
@@ -24,6 +23,7 @@ use std::sync::{Arc, Mutex};
 mod primes;
 
 struct UpdateWitnessesParams {
+    element_size: usize,
     bucket_size: usize,
     deletions_count: usize,
     additions_count: usize,
@@ -45,19 +45,28 @@ fn update_witnesses<'r, 's, 't0>(
         let mut staticels: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
             Default::default(); staticels_count
         ];
-        // Generate 8 random bytes for each element.
-        let mut bytes = vec![0; 8];
+        // Generate random bytes for element data.
+        let count = deletions.len() + additions.len() + staticels.len();
+        let mut bytes = vec![0; params.element_size * count];
+        rng.fill_bytes(&mut bytes);
+        let mut i = 0;
         for deletion in deletions.iter_mut() {
-            rng.fill_bytes(&mut bytes);
-            deletion.0 = bytes.clone();
+            let start = params.element_size * i;
+            i += 1;
+            let end = params.element_size * i;
+            deletion.0 = bytes[start..end].to_vec();
         }
         for addition in additions.iter_mut() {
-            rng.fill_bytes(&mut bytes);
-            addition.0 = bytes.clone();
+            let start = params.element_size * i;
+            i += 1;
+            let end = params.element_size * i;
+            addition.0 = bytes[start..end].to_vec();
         }
         for staticel in staticels.iter_mut() {
-            rng.fill_bytes(&mut bytes);
-            staticel.0 = bytes.clone();
+            let start = params.element_size * i;
+            i += 1;
+            let end = params.element_size * i;
+            staticel.0 = bytes[start..end].to_vec();
         }
         // Create accumulator.
         let mut acc = Accumulator::<BigInt>::with_private_key(
@@ -131,14 +140,18 @@ fn update_witnesses<'r, 's, 't0>(
 
 fn bench(c: &mut Criterion) {
     // Benchmark constants.
-    const BUCKET_SIZES: [usize; 5] = [8, 16, 32, 64, 128];
+    const ELEMENT_SIZE: usize = 16;
+    const BUCKETS_COUNT: usize = 16;
     const DELETIONS_FACTOR: f32 = 0.05;
     const ADDITIONS_FACTOR: f32 = 0.20;
     const SAMPLE_SIZE: usize = 10;
-    // Run benchmark.
+    // Create benchmark groups.
     let mut group = c.benchmark_group("update_witnesses");
-    for bucket_size in BUCKET_SIZES {
+    // Create bucket sizes.
+    for e in 0..BUCKETS_COUNT {
+        let bucket_size = 1 << e;
         let params = UpdateWitnessesParams {
+            element_size: ELEMENT_SIZE,
             bucket_size: bucket_size,
             deletions_count: (bucket_size as f32 * DELETIONS_FACTOR) as usize,
             additions_count: (bucket_size as f32 * ADDITIONS_FACTOR) as usize,
@@ -146,7 +159,6 @@ fn bench(c: &mut Criterion) {
         group.sample_size(SAMPLE_SIZE);
         group.sampling_mode(SamplingMode::Flat);
         group.throughput(Throughput::Elements(bucket_size as u64));
-        group.measurement_time(Duration::from_secs(20));
         group.bench_with_input(
             BenchmarkId::from_parameter(bucket_size),
             &params,
