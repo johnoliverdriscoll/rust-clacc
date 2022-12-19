@@ -617,18 +617,18 @@ impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
 
     /// Thread-safe method that updates multiple witnesses.
     ///
-    /// This method operates on atomic references to iterators over collections
-    /// of element-witness pairs so that the application can invoke it
-    /// concurrently. All concurrently running invocations will finish when
-    /// the iterators have reached the end of their collections. A usage
-    /// example can be found in this crate's benchmarks.
-    ///
     /// It is assumed that the additional elements have been absorbed by the
     /// update and that their witnesses are the accumulator's value before any
     /// of the additions or deletions absorbed by this update were applied.
     /// Updating the witnesses for each of these additional elements is thus
     /// acheived by simply removing its respective element from the update and
     /// applying the result to its witness.
+    ///
+    /// This method operates on atomic references to iterators over collections
+    /// of element-witness pairs. An invocation will run until the referenced
+    /// iterators have reached the end of their collections. To update witnesses
+    /// concurrently, simply invoke this method from multiple threads using
+    /// references to the same iterators.
     ///
     /// ```
     /// use clacc::{
@@ -637,6 +637,8 @@ impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
     ///     gmp::BigInt,
     ///     typenum::U16,
     /// };
+    /// use crossbeam::thread;
+    /// use num_cpus;
     /// use rand::RngCore;
     /// use std::sync::{Arc, Mutex};
     /// // Create elements.
@@ -714,12 +716,24 @@ impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
     ///         &addition.1,
     ///     );
     /// }
-    /// // Update all witnesses.
-    /// update.update_witnesses::<Map, U16, Raw, _, _>(
-    ///     &acc,
-    ///     Arc::new(Mutex::new(additions.iter_mut())),
-    ///     Arc::new(Mutex::new(staticels.iter_mut())),
-    /// );
+    /// // Update all witnesses concurrently.
+    /// let additions_iter = Arc::new(Mutex::new(additions.iter_mut()));
+    /// let staticels_iter = Arc::new(Mutex::new(staticels.iter_mut()));
+    /// thread::scope(|scope| {
+    ///     for _ in 0..num_cpus::get() {
+    ///         let acc = acc.clone();
+    ///         let u = update.clone();
+    ///         let additions_iter = Arc::clone(&additions_iter);
+    ///         let staticels_iter = Arc::clone(&staticels_iter);
+    ///         scope.spawn(move |_| {
+    ///             u.update_witnesses::<Map, U16, Raw, _, _>(
+    ///                 &acc,
+    ///                 additions_iter,
+    ///                 staticels_iter,
+    ///             );
+    ///         });
+    ///     }
+    /// }).unwrap();
     /// // Verify all updated witnesses.
     /// for addition in additions.iter() {
     ///     assert!(acc.verify::<Map, U16, Raw, _>(
