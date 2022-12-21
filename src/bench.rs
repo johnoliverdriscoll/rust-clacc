@@ -20,8 +20,6 @@ use num_cpus;
 use rand::RngCore;
 use std::sync::{Arc, Mutex};
 
-mod primes;
-
 struct UpdateWitnessesParams {
     element_size: usize,
     bucket_size: usize,
@@ -29,7 +27,61 @@ struct UpdateWitnessesParams {
     additions_count: usize,
 }
 
-fn update_witnesses<'r, 's, 't0>(
+const P: [u8; 192] = [
+    0xdf, 0x02, 0x4a, 0x0a, 0x60, 0x19, 0xdf, 0x89,
+    0xd0, 0x2f, 0xf1, 0x0d, 0xfa, 0xb3, 0x97, 0x86,
+    0xe4, 0x2e, 0xad, 0x87, 0xb0, 0xf8, 0x56, 0x57,
+    0x50, 0x82, 0x23, 0x10, 0x73, 0x39, 0xb5, 0xe3,
+    0x8c, 0xb7, 0x32, 0x97, 0x90, 0x7c, 0x17, 0xa5,
+    0xe1, 0xec, 0x71, 0xf1, 0x0e, 0xd2, 0xfe, 0xfc,
+    0x0c, 0x0f, 0x54, 0x9f, 0x0c, 0x0d, 0x53, 0x06,
+    0x57, 0xbd, 0x55, 0x92, 0x56, 0xf7, 0x6d, 0x7c,
+    0xe1, 0x7d, 0x5f, 0x4e, 0x8e, 0x00, 0xa4, 0x9d,
+    0xdc, 0xda, 0x19, 0xc9, 0xc6, 0xef, 0xdc, 0xc1,
+    0xfb, 0x5b, 0x2e, 0x20, 0xc9, 0x2f, 0x70, 0x56,
+    0xcc, 0x4c, 0x16, 0xb8, 0x96, 0xa5, 0x67, 0x3f,
+    0xf0, 0x7c, 0xbc, 0x22, 0x75, 0x29, 0x91, 0xbf,
+    0x01, 0xae, 0x0f, 0x37, 0xce, 0x57, 0xe1, 0x29,
+    0x07, 0x48, 0x7b, 0x07, 0x7d, 0x00, 0x85, 0x3b,
+    0xe6, 0xbc, 0x7a, 0x7d, 0xd9, 0xb0, 0x69, 0x93,
+    0x11, 0xff, 0x9f, 0x7d, 0x62, 0x72, 0xfb, 0x89,
+    0x2e, 0x71, 0x39, 0x57, 0x34, 0x23, 0x1d, 0xaf,
+    0xae, 0x00, 0x82, 0x86, 0xc2, 0x62, 0x9a, 0xc1,
+    0x41, 0xdd, 0x31, 0xd3, 0x45, 0xa7, 0xbe, 0x83,
+    0x3c, 0x5f, 0x72, 0xfd, 0x1c, 0x72, 0x17, 0x76,
+    0x42, 0x06, 0xc1, 0x49, 0x6f, 0xcf, 0x4c, 0x4a,
+    0x18, 0x59, 0x5b, 0x57, 0x1d, 0x0f, 0x3b, 0x90,
+    0xc6, 0x3c, 0x07, 0xf7, 0x65, 0x40, 0x46, 0xbb,
+];
+
+const Q: [u8; 192] = [
+    0xad, 0x77, 0x4a, 0xe1, 0x00, 0xe0, 0x44, 0x08,
+    0x9e, 0xfe, 0xa2, 0x11, 0x54, 0xe7, 0x98, 0x48,
+    0x43, 0x02, 0x4a, 0x4d, 0xa0, 0xf2, 0xb5, 0xfc,
+    0xac, 0x03, 0x04, 0xd0, 0x80, 0xc1, 0x24, 0x84,
+    0x8b, 0x10, 0x6e, 0x05, 0x32, 0xa9, 0x4f, 0xca,
+    0x56, 0x79, 0xca, 0xf4, 0xa3, 0xc8, 0xb8, 0xc7,
+    0x4a, 0xe6, 0x61, 0xf7, 0xd9, 0x7a, 0xde, 0xdd,
+    0x5d, 0x9d, 0xc5, 0x65, 0x30, 0x92, 0x64, 0xca,
+    0x5d, 0x01, 0xfb, 0xf0, 0xb7, 0x30, 0x07, 0x12,
+    0x30, 0x08, 0x94, 0x20, 0xf2, 0xf3, 0xf6, 0xda,
+    0x37, 0xed, 0x22, 0x3e, 0x29, 0xe0, 0x0f, 0x6b,
+    0x78, 0x2b, 0x62, 0x7b, 0x9b, 0x6f, 0x12, 0xe4,
+    0xc7, 0x1e, 0x57, 0x48, 0x6c, 0xa2, 0x5f, 0x9f,
+    0x52, 0xee, 0x8d, 0xf6, 0x4e, 0x00, 0x37, 0x0c,
+    0xfc, 0xb2, 0x83, 0x25, 0x0b, 0x0c, 0x05, 0x13,
+    0xfd, 0x78, 0x0b, 0x64, 0x2e, 0xb1, 0xcb, 0x49,
+    0x6d, 0xda, 0xe8, 0x0c, 0x21, 0xf5, 0x85, 0x6b,
+    0x94, 0xdc, 0x96, 0x59, 0xa1, 0x31, 0x77, 0x8f,
+    0x67, 0x72, 0x5d, 0xb2, 0xa6, 0xea, 0xf7, 0x03,
+    0x79, 0xeb, 0x54, 0x3b, 0x0d, 0xa8, 0x00, 0xa2,
+    0x0b, 0xb9, 0xd7, 0xd9, 0x83, 0xa2, 0x4e, 0x2c,
+    0x3c, 0x01, 0xcd, 0x01, 0x28, 0x38, 0xb2, 0x3d,
+    0xcd, 0x53, 0x1d, 0x00, 0xc4, 0xcc, 0x88, 0xd1,
+    0x95, 0x0d, 0xbf, 0x4d, 0xc4, 0xc4, 0x01, 0xc7,
+];
+
+fn update_witnesses_bench<'r, 's, 't0>(
     bencher: &'r mut Bencher<'s>,
     params: &'t0 UpdateWitnessesParams,
 ) {
@@ -50,88 +102,73 @@ fn update_witnesses<'r, 's, 't0>(
         let mut bytes = vec![0; params.element_size * count];
         rng.fill_bytes(&mut bytes);
         let mut i = 0;
-        for deletion in deletions.iter_mut() {
+        for (deletion, _) in deletions.iter_mut() {
             let start = params.element_size * i;
             i += 1;
             let end = params.element_size * i;
-            deletion.0 = bytes[start..end].to_vec();
+            *deletion = bytes[start..end].to_vec();
         }
-        for addition in additions.iter_mut() {
+        for (addition, _) in additions.iter_mut() {
             let start = params.element_size * i;
             i += 1;
             let end = params.element_size * i;
-            addition.0 = bytes[start..end].to_vec();
+            *addition = bytes[start..end].to_vec();
         }
-        for staticel in staticels.iter_mut() {
+        for (staticel, _) in staticels.iter_mut() {
             let start = params.element_size * i;
             i += 1;
             let end = params.element_size * i;
-            staticel.0 = bytes[start..end].to_vec();
+            *staticel = bytes[start..end].to_vec();
         }
         // Create accumulator.
         let mut acc = Accumulator::<BigInt>::with_private_key(
-            primes::P.to_vec().as_slice().into(),
-            primes::Q.to_vec().as_slice().into(),
+            P.to_vec().as_slice().into(),
+            Q.to_vec().as_slice().into(),
         );
         // Accumulate bucket elements.
-        for deletion in deletions.iter() {
-            acc.add::<Map, U16, Raw, _>(&deletion.0);
+        for (deletion, _) in deletions.iter() {
+            acc.add::<Map, U16, Raw, _>(deletion);
         }
-        for stat in staticels.iter() {
-            acc.add::<Map, U16, Raw, _>(&stat.0);
+        for (staticel, _) in staticels.iter() {
+            acc.add::<Map, U16, Raw, _>(staticel);
         }
         // Generate witnesses for static elements.
-        for stat in staticels.iter_mut() {
-            stat.1 = acc.prove::<Map, U16, Raw, _>(
-                &stat.0,
-            ).unwrap();
+        for (staticel, witness) in staticels.iter_mut() {
+            *witness = acc.prove::<Map, U16, Raw, _>(staticel).unwrap();
         }
         // Save accumulation at current state.
         let prev = acc.clone();
         // Accumulate deletions.
-        for del in deletions.iter_mut() {
-            del.1 = acc.prove::<Map, U16, Raw, _>(&del.0).unwrap();
-            acc.del::<Map, U16, Raw, _>(&del.0, &del.1).unwrap();
+        for (deletion, witness) in deletions.iter_mut() {
+            *witness = acc.prove::<Map, U16, Raw, _>(deletion).unwrap();
+            acc.del::<Map, U16, Raw, _>(deletion, witness).unwrap();
         }
         // Accumulate additions.
-        for addition in additions.iter_mut() {
-            addition.1 = acc.add::<Map, U16, Raw, _>(&addition.0);
+        for (addition, witness) in additions.iter_mut() {
+            *witness = acc.add::<Map, U16, Raw, _>(addition);
             // Use the saved accumulation as the witness value.
-            addition.1.set_value(prev.get_value());
+            witness.set_value(prev.get_value());
         }
         // Batch updates.
         let mut update = Update::new();
-        for deletion in deletions.iter() {
-            update.del::<Map, U16, Raw, _>(
-                &deletion.0,
-                &deletion.1,
-            );
+        for (deletion, witness) in deletions.iter() {
+            update.del::<Map, U16, Raw, _>(deletion, witness);
         }
-        for addition in additions.iter() {
-            update.add::<Map, U16, Raw, _>(
-                &addition.0,
-                &addition.1,
-            );
+        for (addition, witness) in additions.iter() {
+            update.add::<Map, U16, Raw, _>(addition, witness);
         }
         (acc, update, additions, staticels)
-    }, |mut input| {
-        // Update witnesses.
-        let acc = input.0;
-        let update = input.1;
-        let additions = Arc::new(Mutex::new(input.2.iter_mut()));
-        let staticels = Arc::new(Mutex::new(input.3.iter_mut()));
+    }, |(acc, update, mut additions, mut staticels)| {
+        let additions = Arc::new(Mutex::new(additions.iter_mut()));
+        let staticels = Arc::new(Mutex::new(staticels.iter_mut()));
         thread::scope(|scope| {
             for _ in 0..num_cpus::get() {
                 let acc = acc.clone();
                 let u = update.clone();
-                let additions = Arc::clone(&additions);
-                let staticels = Arc::clone(&staticels);
+                let add = Arc::clone(&additions);
+                let sta = Arc::clone(&staticels);
                 scope.spawn(move |_| {
-                    u.update_witnesses::<Map, U16, Raw, _, _>(
-                        &acc,
-                        additions,
-                        staticels,
-                    );
+                    u.update_witnesses::<Map, U16, Raw, _, _>(&acc, add, sta);
                 });
             }
         }).unwrap();
@@ -162,7 +199,7 @@ fn bench(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::from_parameter(bucket_size),
             &params,
-            update_witnesses,
+            update_witnesses_bench,
         );
     }
     group.finish();
