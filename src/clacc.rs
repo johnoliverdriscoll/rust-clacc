@@ -20,7 +20,6 @@
 //!
 //! [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
 use generic_array::{ArrayLength, GenericArray};
-use rand::RngCore;
 use serde::{Serialize, Deserialize};
 use std::sync::{Arc, Mutex};
 
@@ -154,19 +153,27 @@ impl<T> Accumulator<T> where T: for<'a> BigInt<'a> {
     ///
     /// ```
     /// use clacc::{Accumulator, BigInt as BigIntTrait, gmp::BigInt};
-    /// assert_eq!(Accumulator::<BigInt>::with_random_key(None)
-    ///            .0
-    ///            .get_public_key()
-    ///            .size_in_bits(), 3072);
-    /// assert_eq!(Accumulator::<BigInt>::with_random_key(Some(4096))
-    ///            .0
-    ///            .get_public_key()
-    ///            .size_in_bits(), 4096);
+    /// use rand::RngCore;
+    /// let mut rng = rand::thread_rng();
+    /// assert_eq!(
+    ///   Accumulator::<BigInt>::with_random_key(
+    ///     |bytes| rng.fill_bytes(bytes),
+    ///     None,
+    ///   ).0.get_public_key().size_in_bits(),
+    ///   3072,
+    /// );
+    /// assert_eq!(
+    ///   Accumulator::<BigInt>::with_random_key(
+    ///     |bytes| rng.fill_bytes(bytes),
+    ///     Some(1024),
+    ///   ).0.get_public_key().size_in_bits(),
+    ///   1024,
+    /// );
     /// ```
-    pub fn with_random_key(
-        key_bits: Option<usize>
+    pub fn with_random_key<F: FnMut(&mut [u8])>(
+        mut fill_bytes: F,
+        key_bits: Option<usize>,
     ) -> (Self, T, T) {
-        let mut rng = rand::thread_rng();
         let mod_bits = match key_bits {
             Some(bits) => bits,
             None => 3072,
@@ -176,9 +183,9 @@ impl<T> Accumulator<T> where T: for<'a> BigInt<'a> {
         let mut q;
         let mut bytes = vec![0; prime_bytes];
         loop {
-            rng.fill_bytes(&mut bytes);
+            fill_bytes(&mut bytes);
             p = T::from(bytes.as_slice()).next_prime();
-            rng.fill_bytes(&mut bytes);
+            fill_bytes(&mut bytes);
             q = T::from(bytes.as_slice()).next_prime();
             if p.mul(&q).size_in_bits() != mod_bits {
                 continue;
