@@ -1,20 +1,16 @@
 //! Module for implementations using [blake2](https://docs.rs/blake2).
-use blake2::{VarBlake2b, digest::{Update, VariableOutput}};
-use generic_array::{ArrayLength, GenericArray};
+use blake2::{Blake2bVar, digest::{Update, VariableOutput}};
 
 /// An implementation of [Mapper](trait.Mapper.html) using
 /// [blake2](https://docs.rs/blake2).
-pub struct Mapper;
+pub struct Mapper<const N: usize>;
 
-impl crate::Mapper for Mapper {
-    fn map<N>(x: &[u8]) -> GenericArray<u8, N>
-    where N: ArrayLength<u8> {
-        let mut hasher = VarBlake2b::new(N::to_usize()).unwrap();
+impl<const N: usize> crate::Mapper<N> for Mapper<N> {
+    fn map(x: &[u8]) -> [u8; N] {
+        let mut hasher = Blake2bVar::new(N).unwrap();
         hasher.update(x);
-        let mut array = None;
-        hasher.finalize_variable(|digest| {
-            array = Some(GenericArray::<u8, N>::clone_from_slice(digest));
-        });
-        array.unwrap()
+        let mut buf = [0u8; N];
+        hasher.finalize_variable(&mut buf).unwrap();
+        buf
     }
 }

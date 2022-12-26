@@ -2,9 +2,8 @@
 //! bucket size of elements with turnover.
 use clacc::{
     Accumulator, Update, Witness, RawSerializer as Raw,
-    blake2::Mapper as Map,
+    blake2::Mapper,
     gmp::BigInt,
-    typenum::U16,
 };
 use criterion::{
     BatchSize::SmallInput,
@@ -19,6 +18,8 @@ use crossbeam::thread;
 use num_cpus;
 use rand::RngCore;
 use std::sync::{Arc, Mutex};
+
+type Map = Mapper<16>;
 
 struct UpdateWitnessesParams {
     element_size: usize,
@@ -102,60 +103,60 @@ fn update_witnesses_bench<'r, 's, 't0>(
         let mut bytes = vec![0; params.element_size * count];
         rng.fill_bytes(&mut bytes);
         let mut i = 0;
-        for (deletion, _) in deletions.iter_mut() {
+        for (element, _) in deletions.iter_mut() {
             let start = params.element_size * i;
             i += 1;
             let end = params.element_size * i;
-            *deletion = bytes[start..end].to_vec();
+            *element = bytes[start..end].to_vec();
         }
-        for (addition, _) in additions.iter_mut() {
+        for (element, _) in additions.iter_mut() {
             let start = params.element_size * i;
             i += 1;
             let end = params.element_size * i;
-            *addition = bytes[start..end].to_vec();
+            *element = bytes[start..end].to_vec();
         }
-        for (staticel, _) in staticels.iter_mut() {
+        for (element, _) in staticels.iter_mut() {
             let start = params.element_size * i;
             i += 1;
             let end = params.element_size * i;
-            *staticel = bytes[start..end].to_vec();
+            *element = bytes[start..end].to_vec();
         }
         // Create accumulator.
-        let mut acc = Accumulator::<BigInt>::with_private_key(
+        let mut acc = Accumulator::<BigInt, 16>::with_private_key(
             P.to_vec().as_slice().into(),
             Q.to_vec().as_slice().into(),
         );
         // Accumulate bucket elements.
-        for (deletion, _) in deletions.iter() {
-            acc.add::<Map, U16, Raw, _>(deletion);
+        for (element, _) in deletions.iter() {
+            acc.add::<Map, Raw, _>(element);
         }
-        for (staticel, _) in staticels.iter() {
-            acc.add::<Map, U16, Raw, _>(staticel);
+        for (element, _) in staticels.iter() {
+            acc.add::<Map, Raw, _>(element);
         }
         // Generate witnesses for static elements.
-        for (staticel, witness) in staticels.iter_mut() {
-            *witness = acc.prove::<Map, U16, Raw, _>(staticel).unwrap();
+        for (element, witness) in staticels.iter_mut() {
+            *witness = acc.prove::<Map, Raw, _>(element).unwrap();
         }
         // Save accumulation at current state.
         let prev = acc.clone();
         // Accumulate deletions.
-        for (deletion, witness) in deletions.iter_mut() {
-            *witness = acc.prove::<Map, U16, Raw, _>(deletion).unwrap();
-            acc.del::<Map, U16, Raw, _>(deletion, witness).unwrap();
+        for (element, witness) in deletions.iter_mut() {
+            *witness = acc.prove::<Map, Raw, _>(element).unwrap();
+            acc.del::<Map, Raw, _>(element, witness).unwrap();
         }
         // Accumulate additions.
-        for (addition, witness) in additions.iter_mut() {
-            *witness = acc.add::<Map, U16, Raw, _>(addition);
+        for (element, witness) in additions.iter_mut() {
+            *witness = acc.add::<Map, Raw, _>(element);
             // Use the saved accumulation as the witness value.
             witness.set_value(prev.get_value());
         }
         // Batch updates.
         let mut update = Update::new();
-        for (deletion, witness) in deletions.iter() {
-            update.del::<Map, U16, Raw, _>(deletion, witness);
+        for (element, witness) in deletions.iter() {
+            update.del::<Map, Raw, _>(element, witness);
         }
-        for (addition, witness) in additions.iter() {
-            update.add::<Map, U16, Raw, _>(addition, witness);
+        for (element, witness) in additions.iter() {
+            update.add::<Map, Raw, _>(element, witness);
         }
         (acc, update, additions, staticels)
     }, |(acc, update, mut additions, mut staticels)| {
@@ -168,7 +169,7 @@ fn update_witnesses_bench<'r, 's, 't0>(
                 let add = Arc::clone(&additions);
                 let sta = Arc::clone(&staticels);
                 scope.spawn(move |_| {
-                    u.update_witnesses::<Map, U16, Raw, _, _>(&acc, add, sta);
+                    u.update_witnesses::<Map, Raw, _, _>(&acc, add, sta);
                 });
             }
         }).unwrap();
@@ -181,7 +182,6 @@ fn bench(c: &mut Criterion) {
     const BUCKETS_COUNT: usize = 16;
     const DELETIONS_FACTOR: f32 = 0.05;
     const ADDITIONS_FACTOR: f32 = 0.20;
-    const SAMPLE_SIZE: usize = 10;
     // Create benchmark groups.
     let mut group = c.benchmark_group("update_witnesses");
     // Create bucket sizes.
@@ -193,7 +193,6 @@ fn bench(c: &mut Criterion) {
             deletions_count: (bucket_size as f32 * DELETIONS_FACTOR) as usize,
             additions_count: (bucket_size as f32 * ADDITIONS_FACTOR) as usize,
         };
-        group.sample_size(SAMPLE_SIZE);
         group.sampling_mode(SamplingMode::Flat);
         group.throughput(Throughput::Elements(bucket_size as u64));
         group.bench_with_input(

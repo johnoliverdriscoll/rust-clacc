@@ -28,11 +28,9 @@ harness = false
 default = ["blake2", "rust-gmp", "velocypack"]
 
 [dependencies]
-blake2 = {version = "0.9.2", optional = true}
-generic-array = "0.14.6"
+blake2 = {version = "0.10.6", optional = true}
 rust-gmp = {version = "0.5.0", optional = true}
-serde = {version = "1.0.148", features = ["derive"]}
-typenum = "1.15.0"
+serde = {version = "1.0.151", features = ["derive"]}
 velocypack = {version = "0.1.1", optional = true}
 
 [dev-dependencies]
