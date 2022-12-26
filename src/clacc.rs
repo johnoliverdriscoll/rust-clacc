@@ -684,44 +684,36 @@ impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
     ///     q.as_slice().into()
     /// );
     /// // Accumulate elements.
-    /// for deletion in deletions.iter() {
-    ///     acc.add::<Map, U16, Raw, _>(&deletion.0);
+    /// for (element, _) in deletions.iter() {
+    ///     acc.add::<Map, U16, Raw, _>(element);
     /// }
-    /// for stat in staticels.iter() {
-    ///     acc.add::<Map, U16, Raw, _>(&stat.0);
+    /// for (element, _) in staticels.iter() {
+    ///     acc.add::<Map, U16, Raw, _>(element);
     /// }
     /// // Generate witnesses for static elements.
-    /// for stat in staticels.iter_mut() {
-    ///     stat.1 = acc.prove::<Map, U16, Raw, _>(
-    ///         &stat.0,
-    ///     ).unwrap();
+    /// for (element, witness) in staticels.iter_mut() {
+    ///     *witness = acc.prove::<Map, U16, Raw, _>(element).unwrap()
     /// }
     /// // Save accumulation at current state.
     /// let prev = acc.clone();
     /// // Accumulate deletions.
-    /// for del in deletions.iter_mut() {
-    ///     del.1 = acc.prove::<Map, U16, Raw, _>(&del.0).unwrap();
-    ///     acc.del::<Map, U16, Raw, _>(&del.0, &del.1).unwrap();
+    /// for (element, witness) in deletions.iter_mut() {
+    ///     *witness = acc.prove::<Map, U16, Raw, _>(element).unwrap();
+    ///     acc.del::<Map, U16, Raw, _>(element, witness).unwrap();
     /// }
     /// // Accumulate additions.
-    /// for addition in additions.iter_mut() {
-    ///     addition.1 = acc.add::<Map, U16, Raw, _>(&addition.0);
+    /// for (element, witness) in additions.iter_mut() {
+    ///     *witness = acc.add::<Map, U16, Raw, _>(element);
     ///     // Use the saved accumulation as the witness value.
-    ///     addition.1.set_value(prev.get_value());
+    ///     witness.set_value(prev.get_value());
     /// }
     /// // Batch updates.
     /// let mut update = Update::new();
-    /// for deletion in deletions.iter() {
-    ///     update.del::<Map, U16, Raw, _>(
-    ///         &deletion.0,
-    ///         &deletion.1,
-    ///     );
+    /// for (element, witness) in deletions.iter() {
+    ///     update.del::<Map, U16, Raw, _>(element, witness);
     /// }
-    /// for addition in additions.iter() {
-    ///     update.add::<Map, U16, Raw, _>(
-    ///         &addition.0,
-    ///         &addition.1,
-    ///     );
+    /// for (element, witness) in additions.iter() {
+    ///     update.add::<Map, U16, Raw, _>(element, witness);
     /// }
     /// // Update all witnesses concurrently.
     /// let additions_iter = Arc::new(Mutex::new(additions.iter_mut()));
@@ -742,17 +734,11 @@ impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
     ///     }
     /// }).unwrap();
     /// // Verify all updated witnesses.
-    /// for addition in additions.iter() {
-    ///     assert!(acc.verify::<Map, U16, Raw, _>(
-    ///         &addition.0,
-    ///         &addition.1,
-    ///     ).is_ok());
+    /// for (element, witness) in additions.iter() {
+    ///     assert!(acc.verify::<Map, U16, Raw, _>(element, witness).is_ok());
     /// }
-    /// for staticel in staticels.iter() {
-    ///     assert!(acc.verify::<Map, U16, Raw, _>(
-    ///         &staticel.0,
-    ///         &staticel.1,
-    ///     ).is_ok());
+    /// for (element, witness) in staticels.iter() {
+    ///     assert!(acc.verify::<Map, U16, Raw, _>(element, witness).is_ok());
     /// }
     /// ```
     pub fn update_witnesses<'a, M, N, S, V, I>(
@@ -768,35 +754,33 @@ impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
         S: ElementSerializer<V>,
         I: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send {
         loop {
-            let pair;
-            let is_static;
-            {
+            let (element, witness, is_static) = {
                 let mut s = staticels.lock().unwrap();
                 match s.next() {
                     Some(next) => {
-                        pair = next;
-                        is_static = true;
+                        let (element, witness) = next;
+                        (element, witness, true)
                     },
                     None => {
                         let mut a = additions.lock().unwrap();
                         match a.next() {
                             Some(next) => {
-                                pair = next;
-                                is_static = false;
+                                let (element, witness) = next;
+                                (element, witness, false)
                             },
                             None => break,
                         }
                     }
-                };
-            }
+                }
+            };
             let mut u = self;
             let mut clone;
             if !is_static {
                 clone = self.clone();
-                clone.undo_add::<M, N, S, V>(&pair.0, &pair.1);
+                clone.undo_add::<M, N, S, V>(element, witness);
                 u = &clone;
             }
-            pair.1 = u.update_witness::<M, N, S, V>(acc, &pair.0, &pair.1);
+            *witness = u.update_witness::<M, N, S, V>(acc, element, witness);
         }
     }
 }
