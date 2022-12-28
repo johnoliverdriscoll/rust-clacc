@@ -87,15 +87,9 @@ pub trait BigInt<'bi>:
     fn to_vec(&self) -> Vec<u8>;
 }
 
-/// Helper function that converts an array to a BigInt.
-fn to_bigint<T: for<'a> BigInt<'a>, const N: usize>(x: [u8; N]) -> T {
-    x.as_slice().into()
-}
-
-/// A trait describing a method for converting some arbitrary data to a fixed
-/// sized digest.
-pub trait Mapper<const N: usize> {
-    fn map(x: &[u8]) -> [u8; N];
+/// A trait describing a method for converting some arbitrary data to a BigInt.
+pub trait Mapper {
+    fn map<T>(x: &[u8]) -> T where T: for<'a> BigInt<'a>;
 }
 
 /// An accumulator.
@@ -105,7 +99,7 @@ pub trait Mapper<const N: usize> {
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<T, const N: usize> where T: for<'a> BigInt<'a> {
+pub struct Accumulator<T> where T: for<'a> BigInt<'a> {
 
     /// The current accumulation value.
     z: T,
@@ -117,7 +111,7 @@ pub struct Accumulator<T, const N: usize> where T: for<'a> BigInt<'a> {
     n: T,
 }
 
-impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
+impl<T> Accumulator<T> where T: for<'a> BigInt<'a> {
 
     /// Initialize an accumulator from private key parameters. All
     /// accumulators are able to add elements and verify witnesses. An
@@ -128,7 +122,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let acc = Accumulator::<BigInt, 16>::with_private_key(
+    /// let acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -152,14 +146,14 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// use rand::RngCore;
     /// let mut rng = rand::thread_rng();
     /// assert_eq!(
-    ///   Accumulator::<BigInt, 16>::with_random_key(
+    ///   Accumulator::<BigInt>::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     None,
     ///   ).0.get_public_key().size_in_bits(),
     ///   3072,
     /// );
     /// assert_eq!(
-    ///   Accumulator::<BigInt, 16>::with_random_key(
+    ///   Accumulator::<BigInt>::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     Some(1024),
     ///   ).0.get_public_key().size_in_bits(),
@@ -201,9 +195,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// ```
     /// use clacc::{Accumulator, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let acc = Accumulator::<BigInt, 16>::with_public_key(
-    ///     n.as_slice().into()
-    /// );
+    /// let acc = Accumulator::<BigInt>::with_public_key(n.as_slice().into());
     /// ```
     pub fn with_public_key(n: T) -> Self {
         Accumulator {
@@ -228,7 +220,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// };
     /// type Map = Mapper<16>;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -248,7 +240,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// type Map = Mapper<16>;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -257,9 +249,9 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// assert!(acc.verify::<Map, Raw, _>(&x, &w).is_ok());
     /// ```
     pub fn add<'a, M, S, V>(&mut self, v: &'a V) -> Witness<T>
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V>, {
+    where M: Mapper, V: 'a, S: ElementSerializer<V>, {
         let s = S::serialize_element(v);
-        let x = to_bigint::<T, N>(M::map(&s));
+        let x = M::map::<T>(&s);
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -280,7 +272,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// type Map = Mapper<16>;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -302,7 +294,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// };
     /// type Map = Mapper<16>;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -311,7 +303,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn del<'a, M, S, V>(&mut self, v: &'a V, w: &Witness<T>)
                             -> Result<T, &'static str>
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
@@ -319,7 +311,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
             },
         };
         let s = S::serialize_element(v);
-        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
+        let x_p = M::map::<T>(&s).add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
         }
@@ -344,12 +336,12 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// type Map = Mapper<16>;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
-    /// acc.add::<Mapper<16>, Raw, _>(&x);
+    /// acc.add::<Map, Raw, _>(&x);
     /// let w = acc.prove::<Map, Raw, _>(&x).unwrap();
     /// assert!(acc.verify::<Map, Raw, _>(&x, &w).is_ok());
     /// ```
@@ -365,7 +357,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// };
     /// type Map = Mapper<16>;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -374,7 +366,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn prove<'a, M, S, V>(&self, v: &'a V)
                               -> Result<Witness<T>, &'static str>
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
@@ -382,7 +374,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
             },
         };
         let s = S::serialize_element(v);
-        let x = to_bigint::<T, N>(M::map(&s));
+        let x = M::map::<T>(&s);
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -406,7 +398,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// };
     /// type Map = Mapper<16>;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -426,7 +418,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// type Map = Mapper<16>;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -436,9 +428,9 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn verify<'a, M, S, V>(&self, v: &'a V, w: &Witness<T>)
                                -> Result<(), &'static str>
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let s = S::serialize_element(v);
-        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
+        let x_p = M::map::<T>(&s).add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             Err("x not in z")
         } else {
@@ -458,7 +450,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
 
 }
 
-impl<T, const N: usize> std::fmt::Display for Accumulator<T, N>
+impl<T> std::fmt::Display for Accumulator<T>
 where T: for<'a> BigInt<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
            -> Result<(), std::fmt::Error> {
@@ -506,12 +498,12 @@ impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Clone, Debug, Default)]
-pub struct Update<T, const N: usize> where T: for<'a> BigInt<'a> {
+pub struct Update<T> where T: for<'a> BigInt<'a> {
     pi_a: T,
     pi_d: T,
 }
 
-impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
+impl<T> Update<T> where for<'a> T: 'a + BigInt<'a> {
 
     /// Create a new batched update.
     pub fn new() -> Self {
@@ -527,9 +519,9 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
         v: &'a V,
         w: &Witness<T>,
     )
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let s = S::serialize_element(v);
-        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
+        let x_p = M::map::<T>(&s).add(&w.nonce);
         self.pi_a = self.pi_a.mul(&x_p);
     }
 
@@ -539,9 +531,9 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
         v: &'a V,
         w: &Witness<T>,
     )
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let s = S::serialize_element(v);
-        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
+        let x_p = M::map::<T>(&s).add(&w.nonce);
         self.pi_d = self.pi_d.mul(&x_p);
     }
 
@@ -551,9 +543,9 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
         v: &'a V,
         w: &Witness<T>,
     )
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let s = S::serialize_element(v);
-        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
+        let x_p = M::map::<T>(&s).add(&w.nonce);
         self.pi_a = self.pi_a.div(&x_p);
     }
 
@@ -563,9 +555,9 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
         v: &'a V,
         w: &Witness<T>,
     )
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let s = S::serialize_element(v);
-        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
+        let x_p = M::map::<T>(&s).add(&w.nonce);
         self.pi_d = self.pi_a.div(&x_p);
     }
 
@@ -583,7 +575,7 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -610,13 +602,13 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     /// ```
     pub fn update_witness<'a, M, S, V>(
         &self,
-        acc: &Accumulator<T, N>,
+        acc: &Accumulator<T>,
         v: &'a V,
         w: &Witness<T>,
     ) -> Witness<T>
-    where M: Mapper<N>, V: 'a, S: ElementSerializer<V> {
+    where M: Mapper, V: 'a, S: ElementSerializer<V> {
         let s = S::serialize_element(v);
-        let x_p = to_bigint::<T, N>(M::map(&s)).add(&w.nonce);
+        let x_p = M::map::<T>(&s).add(&w.nonce);
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
             u: w.u.powm(&a.mul(&self.pi_a), &acc.n)
@@ -682,7 +674,7 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     /// // Create accumulator with private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, 16>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into()
     /// );
@@ -746,12 +738,12 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     /// ```
     pub fn update_witnesses<'a, M, S, V, I>(
         &self,
-        acc: &Accumulator<T, N>,
+        acc: &Accumulator<T>,
         additions: Arc<Mutex<I>>,
         staticels: Arc<Mutex<I>>,
     )
     where
-        M: Mapper<N>,
+        M: Mapper,
         V: 'a,
         S: ElementSerializer<V>,
         I: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send {
@@ -787,7 +779,7 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     }
 }
 
-impl<T, const N: usize> std::fmt::Display for Update<T, N>
+impl<T> std::fmt::Display for Update<T>
 where T: for<'a> BigInt<'a> {
     fn fmt(
         &self,

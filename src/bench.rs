@@ -122,7 +122,7 @@ fn update_witnesses_bench<'r, 's, 't0>(
             *element = bytes[start..end].to_vec();
         }
         // Create accumulator.
-        let mut acc = Accumulator::<BigInt, 16>::with_private_key(
+        let mut acc = Accumulator::<BigInt>::with_private_key(
             P.to_vec().as_slice().into(),
             Q.to_vec().as_slice().into(),
         );
