@@ -155,9 +155,9 @@ impl<T> Accumulator<T> where T: for<'a> BigInt<'a> {
     /// assert_eq!(
     ///   Accumulator::<BigInt>::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
-    ///     Some(1024),
+    ///     Some(256),
     ///   ).0.get_public_key().size_in_bits(),
-    ///   1024,
+    ///   256,
     /// );
     /// ```
     pub fn with_random_key<F: FnMut(&mut [u8])>(
@@ -206,8 +206,20 @@ impl<T> Accumulator<T> where T: for<'a> BigInt<'a> {
     }
 
     /// Get an accumulator's public key.
-    pub fn get_public_key(&self) -> &T {
-        &self.n
+    ///
+    /// ```
+    /// use clacc::{Accumulator, gmp::BigInt};
+    /// let p = vec![0x3d];
+    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
+    /// assert_eq!(acc.get_public_key(), n.as_slice().into());
+    /// ```
+    pub fn get_public_key(&self) -> T {
+        self.n.clone()
     }
 
     /// Add an element to an accumulator.
@@ -439,13 +451,58 @@ impl<T> Accumulator<T> where T: for<'a> BigInt<'a> {
     }
 
     /// Return the accumulation value as a BigInt.
-    pub fn get_value(&self) -> &T {
-        &self.z
+    ///
+    /// use clacc::{
+    ///     Accumulator, RawSerializer as Raw,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    /// };
+    /// type Map = Mapper<16>;
+    /// let n = vec![0x0c, 0xa1];
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
+    ///     n.as_slice().into()
+    /// );
+    /// let x = b"abc".to_vec();
+    /// let y = b"def".to_vec();
+    /// // Add an element.
+    /// acc.add::<Map, Raw, _>(&x);
+    /// // Save the current accumulation. This value is effectively
+    /// // a witness for the next element added.
+    /// let w = acc.get_value().clone();
+    /// // Add another element.
+    /// acc.add::<Map, Raw, _>(&y);
+    /// // Verify that `w` is a witness for `y`.
+    /// assert!(acc.verify::<Map, Raw, _>(&y, &w).is_ok());
+    /// ```
+    pub fn get_value(&self) -> T {
+        self.z.clone()
     }
 
     /// Set the accumulation value from a BigInt.
-    pub fn set_value(&mut self, z: &T) {
-        self.z = z.clone();
+    ///
+    /// use clacc::{
+    ///     Accumulator, RawSerializer as Raw,
+    ///     blake2::Mapper,
+    ///     gmp::BigInt,
+    /// };
+    /// type Map = Mapper<16>;
+    /// let p = vec![0x3d];
+    /// let q = vec![0x35];
+    /// let mut acc_prv = Accumulator::<BigInt>::with_private_key(
+    ///     p.as_slice().into(),
+    ///     q.as_slice().into()
+    /// );
+    /// let n = vec![0x0c, 0xa1];
+    /// let mut acc_pub = Accumulator::<BigInt>::with_public_key(
+    ///     n.as_slice().into()
+    /// );
+    /// let x = b"abc".to_vec();
+    /// let w = acc_prv.add::<Map, Raw, _>(&x);
+    /// acc_pub.set_value(&acc_prv.get_value());
+    /// assert!(acc.verify::<Map, Raw, _>(&y, &w).is_ok());
+    /// ```
+    pub fn set_value(&mut self, z: T) {
+        self.z = z;
     }
 
 }
@@ -483,8 +540,8 @@ impl<T> Witness<T> where T: for<'a> BigInt<'a> {
     }
 
     /// Set the witness value from a BigInt.
-    pub fn set_value(&mut self, u: &T) {
-        self.u = u.clone();
+    pub fn set_value(&mut self, u: T) {
+        self.u = u;
     }
 
 }
