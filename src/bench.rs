@@ -1,8 +1,7 @@
 //! Benchmark the performance of updating witnesses with respect to a variable
 //! bucket size of elements with turnover.
 use clacc::{
-    Accumulator, Update, Witness, RawSerializer as Raw,
-    blake2::Mapper,
+    Accumulator, Update, Witness,
     gmp::BigInt,
 };
 use criterion::{
@@ -18,8 +17,6 @@ use crossbeam::thread;
 use num_cpus;
 use rand::RngCore;
 use std::sync::{Arc, Mutex};
-
-type Map = Mapper<16>;
 
 struct UpdateWitnessesParams {
     element_size: usize,
@@ -122,41 +119,41 @@ fn update_witnesses_bench<'r, 's, 't0>(
             *element = bytes[start..end].to_vec();
         }
         // Create accumulator.
-        let mut acc = Accumulator::<BigInt>::with_private_key(
+        let mut acc = Accumulator::<16, BigInt>::with_private_key(
             P.to_vec().as_slice().into(),
             Q.to_vec().as_slice().into(),
         );
         // Accumulate bucket elements.
         for (element, _) in deletions.iter() {
-            acc.add::<Map, Raw, _>(element);
+            acc.add(element);
         }
         for (element, _) in staticels.iter() {
-            acc.add::<Map, Raw, _>(element);
+            acc.add(element);
         }
         // Generate witnesses for static elements.
         for (element, witness) in staticels.iter_mut() {
-            *witness = acc.prove::<Map, Raw, _>(element).unwrap();
+            *witness = acc.prove(element).unwrap();
         }
         // Save accumulation at current state.
         let prev = acc.clone();
         // Accumulate deletions.
         for (element, witness) in deletions.iter_mut() {
-            *witness = acc.prove::<Map, Raw, _>(element).unwrap();
-            acc.del::<Map, Raw, _>(element, witness).unwrap();
+            *witness = acc.prove(element).unwrap();
+            acc.del(element, witness).unwrap();
         }
         // Accumulate additions.
         for (element, witness) in additions.iter_mut() {
-            *witness = acc.add::<Map, Raw, _>(element);
+            *witness = acc.add(element);
             // Use the saved accumulation as the witness value.
             witness.set_value(prev.get_value());
         }
         // Batch updates.
         let mut update = Update::new();
         for (element, witness) in deletions.iter() {
-            update.del::<Map, Raw, _>(element, witness);
+            update.del(element, witness);
         }
         for (element, witness) in additions.iter() {
-            update.add::<Map, Raw, _>(element, witness);
+            update.add(element, witness);
         }
         (acc, update, additions, staticels)
     }, |(acc, update, mut additions, mut staticels)| {
@@ -169,7 +166,7 @@ fn update_witnesses_bench<'r, 's, 't0>(
                 let add = Arc::clone(&additions);
                 let sta = Arc::clone(&staticels);
                 scope.spawn(move |_| {
-                    u.update_witnesses::<Map, Raw, _, _>(&acc, add, sta);
+                    u.update_witnesses(&acc, add, sta);
                 });
             }
         }).unwrap();

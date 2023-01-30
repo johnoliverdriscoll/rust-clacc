@@ -25,13 +25,11 @@ path = "src/bench.rs"
 harness = false
 
 [features]
-default = ["blake2", "rust-gmp", "velocypack"]
+default = ["blake2", "rust-gmp"]
 
 [dependencies]
 blake2 = {version = "0.10.6", optional = true}
 rust-gmp = {version = "0.5.0", optional = true}
-serde = {version = "1.0.151", features = ["derive"]}
-velocypack = {version = "0.1.1", optional = true}
 
 [dev-dependencies]
 criterion = "0.4.0"
