@@ -93,7 +93,8 @@ pub trait Mapped {
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<const N: usize, T> where T: for<'a> BigInt<'a> {
+pub struct Accumulator<const N: usize = 16, T = gmp::BigInt>
+where T: for<'a> BigInt<'a> {
 
     /// The current accumulation value.
     z: T,
@@ -113,10 +114,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// and prove elements after their addition.
     ///
     /// ```
-    /// use clacc::{Accumulator, gmp::BigInt};
+    /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -187,9 +188,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// witnesses.
     ///
     /// ```
-    /// use clacc::{Accumulator, gmp::BigInt};
+    /// use clacc::Accumulator;
     /// let n = vec![0x0c, 0xa1];
-    /// let acc = Accumulator::<16, BigInt>::with_public_key(
+    /// let acc: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// ```
@@ -204,11 +205,11 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Get an accumulator's public key.
     ///
     /// ```
-    /// use clacc::{Accumulator, gmp::BigInt};
+    /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -221,12 +222,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Add an element to an accumulator.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<16, BigInt>::with_public_key(
+    /// let mut acc: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -238,13 +236,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// private key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -268,13 +263,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Delete an element from an accumulator.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -289,12 +281,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<16, BigInt>::with_public_key(
+    /// let mut acc: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -328,13 +317,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Generate a witness to an element's addition to the accumulation.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -348,12 +334,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<16, BigInt>::with_public_key(
+    /// let mut acc: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -387,12 +370,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Verify an element is a member of an accumulator.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<16, BigInt>::with_public_key(
+    /// let mut acc: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -404,13 +384,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// private key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -432,12 +409,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
 
     /// Return the accumulation value as a BigInt.
     ///
-    /// use clacc::{
-    ///     Accumulator
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<16, BigInt>::with_public_key(
+    /// let mut acc: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -458,18 +432,15 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
 
     /// Set the accumulation value from a BigInt.
     ///
-    /// use clacc::{
-    ///     Accumulator,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc_prv = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc_prv: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc_pub = Accumulator::<16, BigInt>::with_public_key(
+    /// let mut acc_pub: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -497,7 +468,7 @@ where T: for<'a> BigInt<'a> {
 
 /// A witness of an element's membership in an accumulator.
 #[derive(Clone, Debug, Default)]
-pub struct Witness<T> where T: for<'a> BigInt<'a> {
+pub struct Witness<T = gmp::BigInt> where T: for<'a> BigInt<'a> {
 
     /// The accumulation value less the element.
     pub u: T,
@@ -530,7 +501,8 @@ impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Clone, Debug, Default)]
-pub struct Update<const N: usize, T> where T: for<'a> BigInt<'a> {
+pub struct Update<const N: usize = 16, T = gmp::BigInt>
+where T: for<'a> BigInt<'a> {
     pi_a: T,
     pi_d: T,
 }
@@ -581,15 +553,12 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// previously absorbed into this update struct.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator, Update,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::{Accumulator, Update};
     /// // In this example, the update will include a deletion, so the
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -647,10 +616,7 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// references to the same iterators.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator, Update, Witness,
-    ///     gmp::BigInt,
-    /// };
+    /// use clacc::{Accumulator, Update, Witness};
     /// use crossbeam::thread;
     /// use num_cpus;
     /// use rand::RngCore;
@@ -660,13 +626,13 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// const DELETIONS_COUNT: usize = 2;
     /// const ADDITIONS_COUNT: usize = 10;
     /// const STATICELS_COUNT: usize = BUCKET_SIZE - DELETIONS_COUNT;
-    /// let mut deletions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    /// let mut deletions: Vec<(Vec<u8>, Witness)> = vec![
     ///     Default::default(); DELETIONS_COUNT
     /// ];
-    /// let mut additions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    /// let mut additions: Vec<(Vec<u8>, Witness)> = vec![
     ///     Default::default(); ADDITIONS_COUNT
     /// ];
-    /// let mut staticels: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    /// let mut staticels: Vec<(Vec<u8>, Witness)> = vec![
     ///     Default::default(); STATICELS_COUNT
     /// ];
     /// let mut rng = rand::thread_rng();
@@ -686,7 +652,7 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// // Create accumulator with private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<16, BigInt>::with_private_key(
+    /// let mut acc: Accumulator = Accumulator::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -729,15 +695,9 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     ///     for _ in 0..num_cpus::get() {
     ///         let acc = acc.clone();
     ///         let u = update.clone();
-    ///         let additions_iter = Arc::clone(&additions_iter);
-    ///         let staticels_iter = Arc::clone(&staticels_iter);
-    ///         scope.spawn(move |_| {
-    ///             u.update_witnesses(
-    ///                 &acc,
-    ///                 additions_iter,
-    ///                 staticels_iter,
-    ///             );
-    ///         });
+    ///         let add = Arc::clone(&additions_iter);
+    ///         let sta = Arc::clone(&staticels_iter);
+    ///         scope.spawn(move |_| u.update_witnesses(&acc, add, sta));
     ///     }
     /// }).unwrap();
     /// // Verify all updated witnesses.
