@@ -93,7 +93,7 @@ pub trait Map<const N: usize> {
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<const N: usize = 16, T = gmp::BigInt>
+pub struct Accumulator<const N: usize = 128, T = gmp::BigInt>
 where T: for<'a> BigInt<'a> {
 
     /// The current accumulation value.
@@ -499,7 +499,7 @@ impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Clone, Debug, Default)]
-pub struct Update<const N: usize = 16, T = gmp::BigInt>
+pub struct Update<const N: usize = 128, T = gmp::BigInt>
 where T: for<'a> BigInt<'a> {
     pi_a: T,
     pi_d: T,
