@@ -82,8 +82,8 @@ pub trait BigInt<'bi>:
 }
 
 /// A trait describing a method for converting some arbitrary data to a BigInt.
-pub trait Mapped {
-    fn map<const N: usize, T>(&self) -> T where T: for<'a> BigInt<'a>;
+pub trait Map<const N: usize> {
+    fn map<T>(&self) -> T where T: for<'a> BigInt<'a>;
 }
 
 /// An accumulator.
@@ -140,20 +140,16 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// use clacc::{Accumulator, BigInt as BigIntTrait, gmp::BigInt};
     /// use rand::RngCore;
     /// let mut rng = rand::thread_rng();
-    /// assert_eq!(
-    ///   Accumulator::<16, BigInt>::with_random_key(
+    /// let acc: Accumulator = Accumulator::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     None,
-    ///   ).0.get_public_key().size_in_bits(),
-    ///   3072,
-    /// );
-    /// assert_eq!(
-    ///   Accumulator::<16, BigInt>::with_random_key(
+    /// ).0;
+    /// assert_eq!(acc.get_public_key().size_in_bits(), 3072);
+    /// let acc: Accumulator = Accumulator::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     Some(256),
-    ///   ).0.get_public_key().size_in_bits(),
-    ///   256,
-    /// );
+    /// ).0;
+    /// assert_eq!(acc.get_public_key().size_in_bits(), 256);
     /// ```
     pub fn with_random_key<F: FnMut(&mut [u8])>(
         mut fill_bytes: F,
@@ -250,7 +246,7 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     pub fn add<'a, V>(&mut self, v: &'a V) -> Witness<T>
     where V: 'a + Clone, Vec<u8>: From<V> {
         let s: Vec<u8> = v.clone().into();
-        let x = s.map::<N, T>();
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -300,7 +296,8 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
             },
         };
         let s: Vec<u8> = v.clone().into();
-        let x_p = s.map::<N, T>().add(&w.nonce);
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
         }
@@ -353,7 +350,7 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
             },
         };
         let s: Vec<u8> = v.clone().into();
-        let x = s.map::<N, T>();
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -399,7 +396,8 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
                          -> Result<(), &'static str>
     where V: 'a + Clone, Vec<u8>: From<V> {
         let s: Vec<u8> = v.clone().into();
-        let x_p = s.map::<N, T>().add(&w.nonce);
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             Err("x not in z")
         } else {
@@ -521,7 +519,8 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     pub fn add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone, Vec<u8>: From<V> {
         let s: Vec<u8> = v.clone().into();
-        let x_p = s.map::<N, T>().add(&w.nonce);
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.mul(&x_p);
     }
 
@@ -529,7 +528,8 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     pub fn del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone, Vec<u8>: From<V> {
         let s: Vec<u8> = v.clone().into();
-        let x_p = s.map::<N, T>().add(&w.nonce);
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_d.mul(&x_p);
     }
 
@@ -537,7 +537,8 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     pub fn undo_add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone, Vec<u8>: From<V> {
         let s: Vec<u8> = v.clone().into();
-        let x_p = s.map::<N, T>().add(&w.nonce);
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.div(&x_p);
     }
 
@@ -545,7 +546,8 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     pub fn undo_del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone, Vec<u8>: From<V> {
         let s: Vec<u8> = v.clone().into();
-        let x_p = s.map::<N, T>().add(&w.nonce);
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_a.div(&x_p);
     }
 
@@ -591,7 +593,8 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     ) -> Witness<T>
     where V: 'a + Clone, Vec<u8>: From<V> {
         let s: Vec<u8> = v.clone().into();
-        let x_p = s.map::<N, T>().add(&w.nonce);
+        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x_p = x.add(&w.nonce);
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
             u: w.u.powm(&a.mul(&self.pi_a), &acc.n)
