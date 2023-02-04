@@ -1,6 +1,6 @@
 [package]
 name = "rust-clacc"
-version = "2.0.1"
+version = "2.1.0"
 authors = ["John Driscoll <johnoliverdriscoll@gmail.com>"]
 description = "Rust implementanion of a CL universal accumulator"
 repository = "https://github.com/johnoliverdriscoll/rust-clacc"
