@@ -1,6 +1,6 @@
 //! Benchmark the performance of updating witnesses with respect to a variable
 //! bucket size of elements with turnover.
-use clacc::{Accumulator, Update, Witness};
+use clacc::{Accumulator, Update, Witness, gmp::BigInt};
 use criterion::{
     BatchSize::SmallInput,
     Bencher,
@@ -83,13 +83,13 @@ fn update_witnesses_bench<'r, 's, 't0>(
     let staticels_count = params.bucket_size - params.deletions_count;
     bencher.iter_batched(|| {
         let mut rng = rand::thread_rng();
-        let mut deletions: Vec<(Vec<u8>, Witness)> = vec![
+        let mut deletions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
             Default::default(); params.deletions_count
         ];
-        let mut additions: Vec<(Vec<u8>, Witness)> = vec![
+        let mut additions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
             Default::default(); params.additions_count
         ];
-        let mut staticels: Vec<(Vec<u8>, Witness)> = vec![
+        let mut staticels: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
             Default::default(); staticels_count
         ];
         // Generate random bytes for element data.
@@ -116,7 +116,7 @@ fn update_witnesses_bench<'r, 's, 't0>(
             *element = bytes[start..end].to_vec();
         }
         // Create accumulator.
-        let mut acc: Accumulator = Accumulator::with_private_key(
+        let mut acc = Accumulator::<BigInt>::with_private_key(
             P.to_vec().as_slice().into(),
             Q.to_vec().as_slice().into(),
         );

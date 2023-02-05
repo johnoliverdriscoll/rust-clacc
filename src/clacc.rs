@@ -24,8 +24,11 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "blake2")]
 pub mod blake2;
 
-#[cfg(feature = "rust-gmp")]
+#[cfg(feature = "gmp")]
 pub mod gmp;
+
+#[cfg(feature = "ripemd")]
+pub mod ripemd;
 
 /// The accumulator base.
 const BASE: i64 = 65537;
@@ -93,7 +96,7 @@ pub trait Map<const N: usize> {
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<const N: usize = 128, T = gmp::BigInt>
+pub struct Accumulator<T, const N: usize = 128>
 where T: for<'a> BigInt<'a> {
 
     /// The current accumulation value.
@@ -106,7 +109,7 @@ where T: for<'a> BigInt<'a> {
     n: T,
 }
 
-impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
+impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
 
     /// Initialize an accumulator from private key parameters. All
     /// accumulators are able to add elements and verify witnesses. An
@@ -114,10 +117,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// and prove elements after their addition.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let acc: Accumulator = Accumulator::with_private_key(
+    /// let acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -140,12 +143,12 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// use clacc::{Accumulator, BigInt as BigIntTrait, gmp::BigInt};
     /// use rand::RngCore;
     /// let mut rng = rand::thread_rng();
-    /// let acc: Accumulator = Accumulator::with_random_key(
+    /// let acc = Accumulator::<BigInt>::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     None,
     /// ).0;
     /// assert_eq!(acc.get_public_key().size_in_bits(), 3072);
-    /// let acc: Accumulator = Accumulator::with_random_key(
+    /// let acc = Accumulator::<BigInt>::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     Some(256),
     /// ).0;
@@ -184,9 +187,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// witnesses.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let acc: Accumulator = Accumulator::with_public_key(
+    /// let acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// ```
@@ -201,11 +204,11 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Get an accumulator's public key.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc: Accumulator = Accumulator::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -218,9 +221,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Add an element to an accumulator.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc: Accumulator = Accumulator::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -232,10 +235,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// private key.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc: Accumulator = Accumulator::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -244,9 +247,8 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// assert!(acc.verify(&x, &w).is_ok());
     /// ```
     pub fn add<'a, V>(&mut self, v: &'a V) -> Witness<T>
-    where V: 'a + Clone, Vec<u8>: From<V> {
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+    where V: 'a + Map<N> {
+        let x = <V as Map<N>>::map::<T>(v);
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -259,10 +261,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Delete an element from an accumulator.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc: Accumulator = Accumulator::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -277,9 +279,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// key.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc: Accumulator = Accumulator::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -288,15 +290,14 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
                       -> Result<T, &'static str>
-    where V: 'a + Clone, Vec<u8>: From<V> {
+    where V: 'a + Map<N> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x = <V as Map<N>>::map::<T>(&v);
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
@@ -314,10 +315,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Generate a witness to an element's addition to the accumulation.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc: Accumulator = Accumulator::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -331,9 +332,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// key.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc: Accumulator = Accumulator::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -342,15 +343,14 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn prove<'a, V>(&self, v: &'a V)
                         -> Result<Witness<T>, &'static str>
-    where V: 'a + Clone, Vec<u8>: From<V> {
+    where V: 'a + Map<N> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+        let x = <V as Map<N>>::map::<T>(&v);
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -367,9 +367,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Verify an element is a member of an accumulator.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc: Accumulator = Accumulator::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -381,10 +381,10 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// private key.
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc: Accumulator = Accumulator::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -394,9 +394,8 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn verify<'a, V>(&self, v: &'a V, w: &Witness<T>)
                          -> Result<(), &'static str>
-    where V: 'a + Clone, Vec<u8>: From<V> {
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+    where V: 'a + Map<N> {
+        let x = <V as Map<N>>::map::<T>(v);
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             Err("x not in z")
@@ -408,9 +407,9 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Return the accumulation value as a [`BigInt`].
     ///
     /// ```
-    /// use clacc::{Accumulator, Witness};
+    /// use clacc::{Accumulator, Witness, gmp::BigInt};
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc: Accumulator = Accumulator::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into(),
     /// );
     /// let x = b"abc".to_vec();
@@ -436,15 +435,15 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// Set the accumulation value from a [`BigInt`].
     ///
     /// ```
-    /// use clacc::Accumulator;
+    /// use clacc::{Accumulator, gmp::BigInt};
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc_prv: Accumulator = Accumulator::with_private_key(
+    /// let mut acc_prv = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc_pub: Accumulator = Accumulator::with_public_key(
+    /// let mut acc_pub = Accumulator::<BigInt>::with_public_key(
     ///     n.as_slice().into()
     /// );
     /// let x = b"abc".to_vec();
@@ -458,7 +457,7 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
 
 }
 
-impl<const N: usize, T> std::fmt::Display for Accumulator<N, T>
+impl<const N: usize, T> std::fmt::Display for Accumulator<T, N>
 where T: for<'a> BigInt<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
            -> Result<(), std::fmt::Error> {
@@ -472,7 +471,7 @@ where T: for<'a> BigInt<'a> {
 
 /// A witness of an element's membership in an accumulator.
 #[derive(Clone, Debug, Default)]
-pub struct Witness<T = gmp::BigInt> where T: for<'a> BigInt<'a> {
+pub struct Witness<T> where T: for<'a> BigInt<'a> {
 
     /// The accumulation value less the element.
     pub u: T,
@@ -505,13 +504,13 @@ impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Clone, Debug, Default)]
-pub struct Update<const N: usize = 128, T = gmp::BigInt>
+pub struct Update<T, const N: usize = 128>
 where T: for<'a> BigInt<'a> {
     pi_a: T,
     pi_d: T,
 }
 
-impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
+impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
 
     /// Create a new batched update.
     pub fn new() -> Self {
@@ -523,36 +522,32 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
 
     /// Absorb an element that must be added to a witness.
     pub fn add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Clone, Vec<u8>: From<V> {
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+    where V: 'a + Map<N> {
+        let x = <V as Map<N>>::map::<T>(v);
         let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.mul(&x_p);
     }
 
     /// Absorb an element that must be deleted from a witness.
     pub fn del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Clone, Vec<u8>: From<V> {
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+    where V: 'a + Map<N> {
+        let x = <V as Map<N>>::map::<T>(v);
         let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_d.mul(&x_p);
     }
 
     /// Undo an absorbed element's addition into an update.
     pub fn undo_add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Clone, Vec<u8>: From<V> {
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+    where V: 'a + Map<N> {
+        let x = <V as Map<N>>::map::<T>(v);
         let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.div(&x_p);
     }
 
     /// Undo an absorbed element's deletion from an update.
     pub fn undo_del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Clone, Vec<u8>: From<V> {
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+    where V: 'a + Map<N> {
+        let x = <V as Map<N>>::map::<T>(v);
         let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_a.div(&x_p);
     }
@@ -561,12 +556,12 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// previously absorbed into this update struct.
     ///
     /// ```
-    /// use clacc::{Accumulator, Update};
+    /// use clacc::{Accumulator, Update, gmp::BigInt};
     /// // In this example, the update will include a deletion, so the
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc: Accumulator = Accumulator::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -593,13 +588,12 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// ```
     pub fn update_witness<'a, V>(
         &self,
-        acc: &Accumulator<N, T>,
+        acc: &Accumulator<T, N>,
         v: &'a V,
         w: &Witness<T>,
     ) -> Witness<T>
-    where V: 'a + Clone, Vec<u8>: From<V> {
-        let s: Vec<u8> = v.clone().into();
-        let x = <Vec<u8> as Map<N>>::map::<T>(&s);
+    where V: 'a + Map<N> {
+        let x = <V as Map<N>>::map::<T>(v);
         let x_p = x.add(&w.nonce);
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
@@ -625,7 +619,7 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// references to the same iterators.
     ///
     /// ```
-    /// use clacc::{Accumulator, Update, Witness};
+    /// use clacc::{Accumulator, Update, Witness, gmp::BigInt};
     /// use crossbeam::thread;
     /// use num_cpus;
     /// use rand::RngCore;
@@ -635,13 +629,13 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// const DELETIONS_COUNT: usize = 2;
     /// const ADDITIONS_COUNT: usize = 10;
     /// const STATICELS_COUNT: usize = BUCKET_SIZE - DELETIONS_COUNT;
-    /// let mut deletions: Vec<(Vec<u8>, Witness)> = vec![
+    /// let mut deletions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
     ///     Default::default(); DELETIONS_COUNT
     /// ];
-    /// let mut additions: Vec<(Vec<u8>, Witness)> = vec![
+    /// let mut additions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
     ///     Default::default(); ADDITIONS_COUNT
     /// ];
-    /// let mut staticels: Vec<(Vec<u8>, Witness)> = vec![
+    /// let mut staticels: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
     ///     Default::default(); STATICELS_COUNT
     /// ];
     /// let mut rng = rand::thread_rng();
@@ -661,7 +655,7 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// // Create accumulator with private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc: Accumulator = Accumulator::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     p.as_slice().into(),
     ///     q.as_slice().into(),
     /// );
@@ -719,12 +713,12 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     /// ```
     pub fn update_witnesses<'a, V, IA, IS>(
         &self,
-        acc: &Accumulator<N, T>,
+        acc: &Accumulator<T, N>,
         additions: Arc<Mutex<IA>>,
         staticels: Arc<Mutex<IS>>,
     )
     where
-        V: 'a + Clone,
+        V: 'a + Map<N>,
         IA: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send,
         IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send,
         Vec<u8>: From<V> {
@@ -760,7 +754,7 @@ impl<const N: usize, T> Update<N, T> where for<'a> T: 'a + BigInt<'a> {
     }
 }
 
-impl<const N: usize, T> std::fmt::Display for Update<N, T>
+impl<const N: usize, T> std::fmt::Display for Update<T, N>
 where T: for<'a> BigInt<'a> {
     fn fmt(
         &self,
