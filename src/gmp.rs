@@ -4,8 +4,7 @@ use crate::{
     BigInt as BigIntTrait,
 };
 
-/// Implementation of [BigInt](trait.BigInt.html) using
-/// [rust-gmp](https://docs.rs/rust-gmp).
+/// Implementation of [`BigInt`] using [rust-gmp](https://docs.rs/rust-gmp).
 pub struct BigInt {
     v: Mpz,
 }

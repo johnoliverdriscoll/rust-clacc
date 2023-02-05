@@ -81,7 +81,7 @@ pub trait BigInt<'bi>:
     fn to_vec(&self) -> Vec<u8>;
 }
 
-/// A trait describing a method for converting some arbitrary data to a BigInt.
+/// A trait describing a conversion from [`Vec<u8>`] to [`BigInt`].
 pub trait Map<const N: usize> {
     fn map<T>(&self) -> T where T: for<'a> BigInt<'a>;
 }
@@ -405,7 +405,7 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
         }
     }
 
-    /// Return the accumulation value as a BigInt.
+    /// Return the accumulation value as a [`BigInt`].
     ///
     /// ```
     /// use clacc::{Accumulator, Witness};
@@ -433,7 +433,7 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
         self.z.clone()
     }
 
-    /// Set the accumulation value from a BigInt.
+    /// Set the accumulation value from a [`BigInt`].
     ///
     /// ```
     /// use clacc::Accumulator;
@@ -484,12 +484,12 @@ pub struct Witness<T = gmp::BigInt> where T: for<'a> BigInt<'a> {
 
 impl<T> Witness<T> where T: for<'a> BigInt<'a> {
 
-    /// Return the witness value as a BigInt.
+    /// Return the witness value as a [`BigInt`].
     pub fn get_value(&self) -> T {
         self.u.clone()
     }
 
-    /// Set the witness value from a BigInt.
+    /// Set the witness value from a [`BigInt`].
     pub fn set_value(&mut self, u: T) {
         self.u = u;
     }
