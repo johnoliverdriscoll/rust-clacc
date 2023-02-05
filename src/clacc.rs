@@ -407,7 +407,8 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
 
     /// Return the accumulation value as a BigInt.
     ///
-    /// use clacc::Accumulator;
+    /// ```
+    /// use clacc::{Accumulator, Witness};
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc: Accumulator = Accumulator::with_public_key(
     ///     n.as_slice().into(),
@@ -418,9 +419,13 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// acc.add(&x);
     /// // Save the current accumulation. This value is effectively
     /// // a witness for the next element added.
-    /// let w = acc.get_value().clone();
+    /// let u = acc.get_value().clone();
     /// // Add another element.
-    /// acc.add(&y);
+    /// let nonce = acc.add(&y).nonce;
+    /// let w = Witness {
+    ///     u: u,
+    ///     nonce: nonce,
+    /// };
     /// // Verify that `w` is a witness for `y`.
     /// assert!(acc.verify(&y, &w).is_ok());
     /// ```
@@ -430,6 +435,7 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
 
     /// Set the accumulation value from a BigInt.
     ///
+    /// ```
     /// use clacc::Accumulator;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
@@ -443,8 +449,8 @@ impl<const N: usize, T> Accumulator<N, T> where T: for<'a> BigInt<'a> {
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc_prv.add(&x);
-    /// acc_pub.set_value(&acc_prv.get_value());
-    /// assert!(acc.verify(&y, &w).is_ok());
+    /// acc_pub.set_value(acc_prv.get_value());
+    /// assert!(acc_prv.verify(&x, &w).is_ok());
     /// ```
     pub fn set_value(&mut self, z: T) {
         self.z = z;
