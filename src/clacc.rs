@@ -87,9 +87,7 @@ pub trait BigInt<'bi>:
 
 /// A trait describing a fixed size digest.
 pub trait Digest {
-
-    /// The number of bytes in a digest.
-    fn bytes() -> usize;
+    const BITS: usize;
 }
 
 /// A 128-bit digest.
@@ -97,9 +95,21 @@ pub trait Digest {
 pub struct D128;
 
 impl Digest for D128 {
-    fn bytes() -> usize {
-        16
-    }
+    const BITS: usize = 128;
+}
+
+/// A trait describing a byte size.
+pub trait Sizer {
+    const BYTES: usize;
+}
+
+/// Provides an implementation of [`Sizer`] for any [`Digest`].
+pub struct DigestSizer<D> where D: Digest {
+    d: PhantomData<D>,
+}
+
+impl<D> Sizer for DigestSizer<D> where D: Digest {
+    const BYTES: usize = (D::BITS + 7) / 8;
 }
 
 /// A trait describing a conversion from an arbitrary type to a fixed size
