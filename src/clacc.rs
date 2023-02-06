@@ -21,6 +21,8 @@
 //! [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "serde")]
+use ::serde::{Serialize, Deserialize};
 
 #[cfg(feature = "blake2")]
 pub mod blake2;
@@ -30,6 +32,9 @@ pub mod gmp;
 
 #[cfg(feature = "ripemd")]
 pub mod ripemd;
+
+#[cfg(feature = "serde")]
+pub mod serde;
 
 /// The accumulator base.
 const BASE: i64 = 65537;
@@ -127,9 +132,9 @@ pub trait Map {
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<T, D = D128>
+pub struct Accumulator<T, M = D128>
 where T: for<'a> BigInt<'a>,
-      D: Map {
+      M: Map {
 
     /// The current accumulation value.
     z: T,
@@ -140,12 +145,12 @@ where T: for<'a> BigInt<'a>,
     /// Modulus.
     n: T,
 
-    digest: PhantomData<D>,
+    map: PhantomData<M>,
 }
 
-impl<T, D> Accumulator<T, D>
+impl<T, M> Accumulator<T, M>
 where T: for<'a> BigInt<'a>,
-      D: Map {
+      M: Map {
 
     /// Initialize an accumulator from private key parameters. All
     /// accumulators are able to add elements and verify witnesses. An
@@ -166,7 +171,7 @@ where T: for<'a> BigInt<'a>,
             d: Some(p.sub(&1.into()).mul(&q.sub(&1.into()))),
             n: p.mul(&q),
             z: BASE.into(),
-            digest: PhantomData,
+            map: PhantomData,
         }
     }
 
@@ -235,7 +240,7 @@ where T: for<'a> BigInt<'a>,
             d: None,
             n: n,
             z: BASE.into(),
-            digest: PhantomData,
+            map: PhantomData,
         }
     }
 
@@ -286,7 +291,7 @@ where T: for<'a> BigInt<'a>,
     /// ```
     pub fn add<'a, V>(&mut self, v: &'a V) -> Witness<T>
     where V: 'a + Clone + Into<Vec<u8>> {
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -335,7 +340,7 @@ where T: for<'a> BigInt<'a>,
                 return Err("d is None");
             },
         };
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
@@ -388,7 +393,7 @@ where T: for<'a> BigInt<'a>,
                 return Err("d is None");
             },
         };
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -433,7 +438,7 @@ where T: for<'a> BigInt<'a>,
     pub fn verify<'a, V>(&self, v: &'a V, w: &Witness<T>)
                          -> Result<(), &'static str>
     where V: 'a + Clone + Into<Vec<u8>> {
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             Err("x not in z")
@@ -495,9 +500,9 @@ where T: for<'a> BigInt<'a>,
 
 }
 
-impl<T, D> std::fmt::Display for Accumulator<T, D>
+impl<T, M> std::fmt::Display for Accumulator<T, M>
 where T: for<'a> BigInt<'a>,
-      D: Map {
+      M: Map {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
            -> Result<(), std::fmt::Error> {
         match self.d.as_ref() {
@@ -510,6 +515,8 @@ where T: for<'a> BigInt<'a>,
 
 /// A witness of an element's membership in an accumulator.
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "T: Serialize, for<'a> T: Deserialize<'a>"))]
 pub struct Witness<T> where T: for<'a> BigInt<'a> {
 
     /// The accumulation value less the element.
@@ -543,12 +550,12 @@ impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Debug, Default)]
-pub struct Update<T, D = D128>
-where for<'a> T: 'a + BigInt<'a>,
-      D: Map {
+pub struct Update<T, M = D128>
+where T: for<'a> BigInt<'a>,
+      M: Map {
     pi_a: T,
     pi_d: T,
-    digest: PhantomData<D>,
+    map: PhantomData<M>,
 }
 
 impl<T, B> Clone for Update<T, B>
@@ -558,28 +565,28 @@ where for<'a> T: 'a + BigInt<'a>,
         Update {
             pi_a: self.pi_a.clone(),
             pi_d: self.pi_d.clone(),
-            digest: PhantomData,
+            map: PhantomData,
         }
     }
 }
 
-impl<T, D> Update<T, D>
+impl<T, M> Update<T, M>
 where for<'a> T: 'a + BigInt<'a>,
-      D: Map {
+      M: Map {
 
     /// Create a new batched update.
     pub fn new() -> Self {
         Update {
             pi_a: 1.into(),
             pi_d: 1.into(),
-            digest: PhantomData,
+            map: PhantomData,
         }
     }
 
     /// Absorb an element that must be added to a witness.
     pub fn add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone + Into<Vec<u8>> {
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.mul(&x_p);
     }
@@ -587,7 +594,7 @@ where for<'a> T: 'a + BigInt<'a>,
     /// Absorb an element that must be deleted from a witness.
     pub fn del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone + Into<Vec<u8>> {
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_d.mul(&x_p);
     }
@@ -595,7 +602,7 @@ where for<'a> T: 'a + BigInt<'a>,
     /// Undo an absorbed element's addition into an update.
     pub fn undo_add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone + Into<Vec<u8>> {
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.div(&x_p);
     }
@@ -603,7 +610,7 @@ where for<'a> T: 'a + BigInt<'a>,
     /// Undo an absorbed element's deletion from an update.
     pub fn undo_del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
     where V: 'a + Clone + Into<Vec<u8>> {
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_a.div(&x_p);
     }
@@ -644,12 +651,12 @@ where for<'a> T: 'a + BigInt<'a>,
     /// ```
     pub fn update_witness<'a, V>(
         &self,
-        acc: &Accumulator<T, D>,
+        acc: &Accumulator<T, M>,
         v: &'a V,
         w: &Witness<T>,
     ) -> Witness<T>
     where V: 'a + Clone + Into<Vec<u8>> {
-        let x = D::map::<T, V>(v.clone());
+        let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
@@ -769,7 +776,7 @@ where for<'a> T: 'a + BigInt<'a>,
     /// ```
     pub fn update_witnesses<'a, V, IA, IS>(
         &self,
-        acc: &Accumulator<T, D>,
+        acc: &Accumulator<T, M>,
         additions: Arc<Mutex<IA>>,
         staticels: Arc<Mutex<IS>>,
     )
@@ -809,9 +816,9 @@ where for<'a> T: 'a + BigInt<'a>,
     }
 }
 
-impl<T, D> std::fmt::Display for Update<T, D>
+impl<T, M> std::fmt::Display for Update<T, M>
 where for<'a> T: 'a + BigInt<'a>,
-      D: Map {
+      M: Map {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>
