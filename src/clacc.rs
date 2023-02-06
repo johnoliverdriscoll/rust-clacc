@@ -19,6 +19,7 @@
 //! the current state of the accumulator, and its public key.
 //!
 //! [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "blake2")]
@@ -84,9 +85,29 @@ pub trait BigInt<'bi>:
     fn to_vec(&self) -> Vec<u8>;
 }
 
-/// A trait describing a conversion from [`Vec<u8>`] to [`BigInt`].
-pub trait Map<const N: usize> {
-    fn map<T>(&self) -> T where T: for<'a> BigInt<'a>;
+/// A trait describing a fixed size digest.
+pub trait Digest {
+
+    /// The number of bytes in a digest.
+    fn bytes() -> usize;
+}
+
+/// A 128-bit digest.
+#[derive(Clone)]
+pub struct D128;
+
+impl Digest for D128 {
+    fn bytes() -> usize {
+        16
+    }
+}
+
+/// A trait describing a conversion from an arbitrary type to a fixed size
+/// [`BigInt`].
+pub trait Map {
+    fn map<T, V>(v: V) -> T
+    where V: Into<Vec<u8>>,
+          T: for<'a> BigInt<'a>;
 }
 
 /// An accumulator.
@@ -96,8 +117,9 @@ pub trait Map<const N: usize> {
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
 #[derive(Clone, Debug)]
-pub struct Accumulator<T, const N: usize = 128>
-where T: for<'a> BigInt<'a> {
+pub struct Accumulator<T, D = D128>
+where T: for<'a> BigInt<'a>,
+      D: Map {
 
     /// The current accumulation value.
     z: T,
@@ -107,9 +129,13 @@ where T: for<'a> BigInt<'a> {
 
     /// Modulus.
     n: T,
+
+    digest: PhantomData<D>,
 }
 
-impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
+impl<T, D> Accumulator<T, D>
+where T: for<'a> BigInt<'a>,
+      D: Map {
 
     /// Initialize an accumulator from private key parameters. All
     /// accumulators are able to add elements and verify witnesses. An
@@ -130,6 +156,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
             d: Some(p.sub(&1.into()).mul(&q.sub(&1.into()))),
             n: p.mul(&q),
             z: BASE.into(),
+            digest: PhantomData,
         }
     }
 
@@ -198,6 +225,7 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
             d: None,
             n: n,
             z: BASE.into(),
+            digest: PhantomData,
         }
     }
 
@@ -247,8 +275,8 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// assert!(acc.verify(&x, &w).is_ok());
     /// ```
     pub fn add<'a, V>(&mut self, v: &'a V) -> Witness<T>
-    where V: 'a + Map<N> {
-        let x = <V as Map<N>>::map::<T>(v);
+    where V: 'a + Clone + Into<Vec<u8>> {
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -290,14 +318,14 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
                       -> Result<T, &'static str>
-    where V: 'a + Map<N> {
+    where V: 'a + Clone + Into<Vec<u8>> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let x = <V as Map<N>>::map::<T>(&v);
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err("x not in z");
@@ -343,14 +371,14 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn prove<'a, V>(&self, v: &'a V)
                         -> Result<Witness<T>, &'static str>
-    where V: 'a + Map<N> {
+    where V: 'a + Clone + Into<Vec<u8>> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
                 return Err("d is None");
             },
         };
-        let x = <V as Map<N>>::map::<T>(&v);
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -394,8 +422,8 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
     /// ```
     pub fn verify<'a, V>(&self, v: &'a V, w: &Witness<T>)
                          -> Result<(), &'static str>
-    where V: 'a + Map<N> {
-        let x = <V as Map<N>>::map::<T>(v);
+    where V: 'a + Clone + Into<Vec<u8>> {
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
             Err("x not in z")
@@ -457,8 +485,9 @@ impl<T, const N: usize> Accumulator<T, N> where T: for<'a> BigInt<'a> {
 
 }
 
-impl<const N: usize, T> std::fmt::Display for Accumulator<T, N>
-where T: for<'a> BigInt<'a> {
+impl<T, D> std::fmt::Display for Accumulator<T, D>
+where T: for<'a> BigInt<'a>,
+      D: Map {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
            -> Result<(), std::fmt::Error> {
         match self.d.as_ref() {
@@ -503,51 +532,68 @@ impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
 }
 
 /// A sum of updates to be applied to witnesses.
-#[derive(Clone, Debug, Default)]
-pub struct Update<T, const N: usize = 128>
-where T: for<'a> BigInt<'a> {
+#[derive(Debug, Default)]
+pub struct Update<T, D = D128>
+where for<'a> T: 'a + BigInt<'a>,
+      D: Map {
     pi_a: T,
     pi_d: T,
+    digest: PhantomData<D>,
 }
 
-impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
+impl<T, B> Clone for Update<T, B>
+where for<'a> T: 'a + BigInt<'a>,
+      B: Map {
+    fn clone(&self) -> Update<T, B> {
+        Update {
+            pi_a: self.pi_a.clone(),
+            pi_d: self.pi_d.clone(),
+            digest: PhantomData,
+        }
+    }
+}
+
+impl<T, D> Update<T, D>
+where for<'a> T: 'a + BigInt<'a>,
+      D: Map {
 
     /// Create a new batched update.
     pub fn new() -> Self {
         Update {
             pi_a: 1.into(),
             pi_d: 1.into(),
+            digest: PhantomData,
         }
     }
 
     /// Absorb an element that must be added to a witness.
     pub fn add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Map<N> {
-        let x = <V as Map<N>>::map::<T>(v);
+    where V: 'a + Clone + Into<Vec<u8>> {
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.mul(&x_p);
     }
 
     /// Absorb an element that must be deleted from a witness.
     pub fn del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Map<N> {
-        let x = <V as Map<N>>::map::<T>(v);
+    where V: 'a + Clone + Into<Vec<u8>> {
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_d.mul(&x_p);
     }
 
     /// Undo an absorbed element's addition into an update.
     pub fn undo_add<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Map<N> {
-        let x = <V as Map<N>>::map::<T>(v);
+    where V: 'a + Clone + Into<Vec<u8>> {
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_a = self.pi_a.div(&x_p);
     }
 
     /// Undo an absorbed element's deletion from an update.
     pub fn undo_del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-    where V: 'a + Map<N> {
-        let x = <V as Map<N>>::map::<T>(v);
+    where V: 'a + Clone + Into<Vec<u8>> {
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         self.pi_d = self.pi_a.div(&x_p);
     }
@@ -588,12 +634,12 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     /// ```
     pub fn update_witness<'a, V>(
         &self,
-        acc: &Accumulator<T, N>,
+        acc: &Accumulator<T, D>,
         v: &'a V,
         w: &Witness<T>,
     ) -> Witness<T>
-    where V: 'a + Map<N> {
-        let x = <V as Map<N>>::map::<T>(v);
+    where V: 'a + Clone + Into<Vec<u8>> {
+        let x = D::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
@@ -713,15 +759,14 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     /// ```
     pub fn update_witnesses<'a, V, IA, IS>(
         &self,
-        acc: &Accumulator<T, N>,
+        acc: &Accumulator<T, D>,
         additions: Arc<Mutex<IA>>,
         staticels: Arc<Mutex<IS>>,
     )
     where
-        V: 'a + Map<N>,
+        V: 'a + Clone + Into<Vec<u8>>,
         IA: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send,
-        IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send,
-        Vec<u8>: From<V> {
+        IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send {
         loop {
             let (element, witness, is_static) = {
                 let mut s = staticels.lock().unwrap();
@@ -754,8 +799,9 @@ impl<T, const N: usize> Update<T, N> where for<'a> T: 'a + BigInt<'a> {
     }
 }
 
-impl<const N: usize, T> std::fmt::Display for Update<T, N>
-where T: for<'a> BigInt<'a> {
+impl<T, D> std::fmt::Display for Update<T, D>
+where for<'a> T: 'a + BigInt<'a>,
+      D: Map {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>

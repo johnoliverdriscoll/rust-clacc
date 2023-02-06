@@ -1,14 +1,12 @@
 //! Module for implementations using [ripemd](https://docs.rs/ripemd).
 use ripemd::{Digest, Ripemd128};
 
-impl<const N: usize> crate::Map<N> for Vec<u8> {
-    fn map<T>(&self) -> T
-    where T: for<'a> crate::BigInt<'a> {
-        if N != 128 {
-            panic!()
-        }
+impl crate::Map for crate::D128 {
+    fn map<T, V>(v: V) -> T
+    where V: Into<Vec<u8>>,
+          T: for<'a> crate::BigInt<'a> {
         let mut hasher = Ripemd128::new();
-        hasher.update(self.as_slice());
+        hasher.update(<V as Into<Vec<u8>>>::into(v).as_slice());
         hasher.finalize().as_slice().into()
     }
 }
