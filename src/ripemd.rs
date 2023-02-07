@@ -1,5 +1,5 @@
 //! Module for implementations using [ripemd](https://docs.rs/ripemd).
-use crate::{BigInt, Digest, Map};
+use crate::{BigInt, D128, Map};
 use ripemd::{Digest, Ripemd128};
 
 impl Map for D128 {
