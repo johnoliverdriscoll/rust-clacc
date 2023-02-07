@@ -25,7 +25,7 @@ path = "src/bench.rs"
 harness = false
 
 [features]
-default = ["blake2", "gmp"]
+default = ["blake2", "gmp", "serde"]
 blake2 = ["dep:blake2"]
 gmp = ["dep:rust-gmp"]
 ripemd = ["dep:ripemd"]
