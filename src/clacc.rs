@@ -331,22 +331,22 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         &mut self,
         v: &'a V,
         w: &Witness<T>,
-    ) -> Result<T, &'static str> {
+    ) -> Result<T, Error> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
-                return Err("d is None");
+                return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
             },
         };
         let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
-            return Err("x not in z");
+            return Err(Error { source: Box::new(ErrorElementNotFound) });
         }
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
             None => {
-                return Err("x has no inverse");
+                return Err(Error { source: Box::new(ErrorNoInverse) });
             },
         };
         self.z = self.z.powm(&x_i, &self.n);
@@ -385,11 +385,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     pub fn prove<'a, V: 'a + Clone + Into<Vec<u8>>>(
         &self,
         v: &'a V,
-    ) -> Result<Witness<T>, &'static str> {
+    ) -> Result<Witness<T>, Error> {
         let d = match self.d.as_ref() {
             Some(d) => d,
             None => {
-                return Err("d is None");
+                return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
             },
         };
         let x = M::map::<T, V>(v.clone());
@@ -397,7 +397,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
             None => {
-                return Err("x has no inverse");
+                return Err(Error { source: Box::new(ErrorNoInverse) });
             },
         };
         Ok(Witness {
@@ -438,11 +438,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         &self,
         v: &'a V,
         w: &Witness<T>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), Error> {
         let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
         if self.z != w.u.powm(&x_p, &self.n) {
-            Err("x not in z")
+            Err(Error { source: Box::new(ErrorElementNotFound) })
         } else {
             Ok(())
         }
@@ -505,7 +505,7 @@ impl<T: BigInt, M: Map> std::fmt::Display for Accumulator<T, M> {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>
-    ) -> Result<(), std::fmt::Error> {
+    ) -> std::fmt::Result {
         match self.d.as_ref() {
             Some(d) => f.write_fmt(format_args!("({:x}, {:x}, {:x})", d,
                                                 self.n, self.z)),
@@ -546,7 +546,7 @@ impl<T: BigInt> std::fmt::Display for Witness<T> {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    ) -> std::fmt::Result {
         f.write_fmt(format_args!("({:x}, {:x})", self.u, self.nonce))
     }
 }
@@ -828,7 +828,54 @@ impl<T: BigInt, M: Map> std::fmt::Display for Update<T, M> {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-    ) -> Result<(), std::fmt::Error> {
+    ) -> std::fmt::Result {
         f.write_fmt(format_args!("({:x}, {:x})", self.pi_a, self.pi_d))
+    }
+}
+
+trait DisplayError: std::fmt::Display + std::fmt::Debug {}
+
+/// The error type which is returned from peforming accumulator operations.
+#[derive(Debug)]
+pub struct Error {
+    source: Box<dyn DisplayError>,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&*self.source, f)
+    }
+}
+
+#[derive(Debug)]
+struct ErrorMissingPrivateKey;
+
+impl DisplayError for ErrorMissingPrivateKey {}
+
+impl std::fmt::Display for ErrorMissingPrivateKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Missing private key")
+    }
+}
+
+#[derive(Debug)]
+struct ErrorNoInverse;
+
+impl DisplayError for ErrorNoInverse {}
+
+impl std::fmt::Display for ErrorNoInverse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "No inverse")
+    }
+}
+
+#[derive(Debug)]
+struct ErrorElementNotFound;
+
+impl DisplayError for ErrorElementNotFound {}
+
+impl std::fmt::Display for ErrorElementNotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Element not found")
     }
 }
