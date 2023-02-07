@@ -71,7 +71,7 @@ impl PartialOrd for BigInt {
     }
 }
 
-impl BigIntTrait<'_> for BigInt {
+impl BigIntTrait for BigInt {
 
     /// ```
     /// use clacc::{BigInt as BigIntTrait, gmp::BigInt};

@@ -40,7 +40,7 @@ pub mod serde;
 const BASE: i64 = 65537;
 
 /// A trait describing an arbitrary precision integer.
-pub trait BigInt<'bi>:
+pub trait BigInt:
     Default
     + From<i64>
     + for<'a> From<&'a [u8]>
@@ -122,7 +122,7 @@ impl<D> ByteSize for DigestByteSize<D> where D: Digest {
 pub trait Map {
     fn map<T, V>(v: V) -> T
     where V: Into<Vec<u8>>,
-          T: for<'a> BigInt<'a>;
+          T: BigInt;
 }
 
 /// An accumulator.
@@ -133,7 +133,7 @@ pub trait Map {
 /// `n`.
 #[derive(Clone, Debug)]
 pub struct Accumulator<T, M = D128>
-where T: for<'a> BigInt<'a>,
+where T: BigInt,
       M: Map {
 
     /// The current accumulation value.
@@ -149,7 +149,7 @@ where T: for<'a> BigInt<'a>,
 }
 
 impl<T, M> Accumulator<T, M>
-where T: for<'a> BigInt<'a>,
+where T: BigInt,
       M: Map {
 
     /// Initialize an accumulator from private key parameters. All
@@ -331,8 +331,11 @@ where T: for<'a> BigInt<'a>,
     /// let w = acc.add(&x);
     /// assert!(acc.del(&x, &w).is_err());
     /// ```
-    pub fn del<'a, V>(&mut self, v: &'a V, w: &Witness<T>)
-                      -> Result<T, &'static str>
+    pub fn del<'a, V>(
+        &mut self,
+        v: &'a V,
+        w: &Witness<T>,
+    ) -> Result<T, &'static str>
     where V: 'a + Clone + Into<Vec<u8>> {
         let d = match self.d.as_ref() {
             Some(d) => d,
@@ -384,8 +387,10 @@ where T: for<'a> BigInt<'a>,
     /// acc.add(&x);
     /// assert!(acc.prove(&x).is_err());
     /// ```
-    pub fn prove<'a, V>(&self, v: &'a V)
-                        -> Result<Witness<T>, &'static str>
+    pub fn prove<'a, V>(
+        &self,
+        v: &'a V,
+    ) -> Result<Witness<T>, &'static str>
     where V: 'a + Clone + Into<Vec<u8>> {
         let d = match self.d.as_ref() {
             Some(d) => d,
@@ -435,8 +440,11 @@ where T: for<'a> BigInt<'a>,
     /// let w = acc.add(&x);
     /// assert!(acc.verify(&x, &w).is_ok());
     /// ```
-    pub fn verify<'a, V>(&self, v: &'a V, w: &Witness<T>)
-                         -> Result<(), &'static str>
+    pub fn verify<'a, V>(
+        &self,
+        v: &'a V,
+        w: &Witness<T>,
+    ) -> Result<(), &'static str>
     where V: 'a + Clone + Into<Vec<u8>> {
         let x = M::map::<T, V>(v.clone());
         let x_p = x.add(&w.nonce);
@@ -501,10 +509,12 @@ where T: for<'a> BigInt<'a>,
 }
 
 impl<T, M> std::fmt::Display for Accumulator<T, M>
-where T: for<'a> BigInt<'a>,
+where T: BigInt,
       M: Map {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
-           -> Result<(), std::fmt::Error> {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>
+    ) -> Result<(), std::fmt::Error> {
         match self.d.as_ref() {
             Some(d) => f.write_fmt(format_args!("({:x}, {:x}, {:x})", d,
                                                 self.n, self.z)),
@@ -517,7 +527,7 @@ where T: for<'a> BigInt<'a>,
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "T: Serialize, for<'a> T: Deserialize<'a>"))]
-pub struct Witness<T> where T: for<'a> BigInt<'a> {
+pub struct Witness<T> where T: BigInt {
 
     /// The accumulation value less the element.
     pub u: T,
@@ -527,7 +537,7 @@ pub struct Witness<T> where T: for<'a> BigInt<'a> {
     pub nonce: T,
 }
 
-impl<T> Witness<T> where T: for<'a> BigInt<'a> {
+impl<T> Witness<T> where T: BigInt {
 
     /// Return the witness value as a [`BigInt`].
     pub fn get_value(&self) -> T {
@@ -541,9 +551,11 @@ impl<T> Witness<T> where T: for<'a> BigInt<'a> {
 
 }
 
-impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>)
-           -> Result<(), std::fmt::Error> {
+impl<T> std::fmt::Display for Witness<T> where T: BigInt {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> Result<(), std::fmt::Error> {
         f.write_fmt(format_args!("({:x}, {:x})", self.u, self.nonce))
     }
 }
@@ -551,7 +563,7 @@ impl<T> std::fmt::Display for Witness<T> where T: for<'a> BigInt<'a> {
 /// A sum of updates to be applied to witnesses.
 #[derive(Debug, Default)]
 pub struct Update<T, M = D128>
-where T: for<'a> BigInt<'a>,
+where T: BigInt,
       M: Map {
     pi_a: T,
     pi_d: T,
@@ -559,7 +571,7 @@ where T: for<'a> BigInt<'a>,
 }
 
 impl<T, B> Clone for Update<T, B>
-where for<'a> T: 'a + BigInt<'a>,
+where T: BigInt,
       B: Map {
     fn clone(&self) -> Update<T, B> {
         Update {
@@ -570,8 +582,8 @@ where for<'a> T: 'a + BigInt<'a>,
     }
 }
 
-impl<T, M> Update<T, M>
-where for<'a> T: 'a + BigInt<'a>,
+impl<'u, T, M> Update<T, M>
+where T: 'u + BigInt,
       M: Map {
 
     /// Create a new batched update.
@@ -774,16 +786,16 @@ where for<'a> T: 'a + BigInt<'a>,
     ///     assert!(acc.verify(element, witness).is_ok());
     /// }
     /// ```
-    pub fn update_witnesses<'a, V, IA, IS>(
+    pub fn update_witnesses<V, IA, IS>(
         &self,
         acc: &Accumulator<T, M>,
         additions: Arc<Mutex<IA>>,
         staticels: Arc<Mutex<IS>>,
     )
     where
-        V: 'a + Clone + Into<Vec<u8>>,
-        IA: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send,
-        IS: Iterator<Item = &'a mut (V, Witness<T>)> + 'a + Send {
+        V: 'u + Clone + Into<Vec<u8>>,
+        IA: Iterator<Item = &'u mut (V, Witness<T>)> + Send,
+        IS: Iterator<Item = &'u mut (V, Witness<T>)> + Send {
         loop {
             let (element, witness, is_static) = {
                 let mut s = staticels.lock().unwrap();
@@ -817,11 +829,11 @@ where for<'a> T: 'a + BigInt<'a>,
 }
 
 impl<T, M> std::fmt::Display for Update<T, M>
-where for<'a> T: 'a + BigInt<'a>,
+where T: BigInt,
       M: Map {
     fn fmt(
         &self,
-        f: &mut std::fmt::Formatter<'_>
+        f: &mut std::fmt::Formatter<'_>,
     ) -> Result<(), std::fmt::Error> {
         f.write_fmt(format_args!("({:x}, {:x})", self.pi_a, self.pi_d))
     }
