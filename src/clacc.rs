@@ -104,16 +104,16 @@ impl Digest for D128 {
 }
 
 /// A trait describing a byte size.
-pub trait Sizer {
+pub trait ByteSize {
     const BYTES: usize;
 }
 
-/// Provides an implementation of [`Sizer`] for any [`Digest`].
-pub struct DigestSizer<D> where D: Digest {
-    d: PhantomData<D>,
+/// Provides an implementation of [`ByteSize`] for any [`Digest`].
+pub struct DigestByteSize<D> where D: Digest {
+    digest: PhantomData<D>,
 }
 
-impl<D> Sizer for DigestSizer<D> where D: Digest {
+impl<D> ByteSize for DigestByteSize<D> where D: Digest {
     const BYTES: usize = (D::BITS + 7) / 8;
 }
 
