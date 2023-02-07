@@ -10,8 +10,10 @@ use crate::{
 };
 
 impl Serialize for BigInt {
-    fn serialize<S>(&self, serializer: S)
-                    -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S: Serializer>(
+        &self,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
         let vec = self.to_vec();
         let mut seq = serializer.serialize_seq(Some(vec.len()))?;
         for byte in vec {
@@ -22,15 +24,16 @@ impl Serialize for BigInt {
 }
 
 impl<'de> Deserialize<'de> for BigInt {
-    fn deserialize<D>(deserializer: D)
-                      -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
+    fn deserialize<D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
         struct BigIntVisitor;
         impl<'de> Visitor<'de> for BigIntVisitor {
             type Value = BigInt;
-            fn visit_seq<V>(self, mut visitor: V)
-                            -> Result<BigInt, V::Error>
-            where V: SeqAccess<'de> {
+            fn visit_seq<V: SeqAccess<'de>>(
+                self,
+                mut visitor: V,
+            ) -> Result<BigInt, V::Error> {
                 let mut vec: Vec<u8> = Vec::new();
                 while match visitor.next_element()? {
                     Some(byte) => {
@@ -41,8 +44,10 @@ impl<'de> Deserialize<'de> for BigInt {
                 } {}
                 Ok(vec.as_slice().into())
             }
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>)
-                         -> Result<(), std::fmt::Error> {
+            fn expecting(
+                &self,
+                f: &mut std::fmt::Formatter<'_>,
+            ) -> Result<(), std::fmt::Error> {
                 write!(f, "a bigint")
             }
         }

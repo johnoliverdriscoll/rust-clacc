@@ -256,8 +256,8 @@ impl std::fmt::LowerHex for BigInt {
 
 impl std::fmt::UpperHex for BigInt {
     fn fmt(
-        &self, f:
-        &mut std::fmt::Formatter<'_>
+        &self,
+        f: &mut std::fmt::Formatter<'_>
     ) -> Result<(), std::fmt::Error> {
         self.to_hex(f, HexCase::Upper)
     }
