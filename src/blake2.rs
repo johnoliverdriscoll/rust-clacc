@@ -1,12 +1,15 @@
 //! Module for implementations using [blake2](https://docs.rs/blake2).
-use crate::{BigInt, ByteSize, Digest, DigestByteSize as DS, Map};
 use blake2::{Blake2bVar, digest::{Update, VariableOutput}};
 
-impl<D: Digest> Map for D {
-    fn map<T: BigInt, V: Into<Vec<u8>>>(v: V) -> T {
-        let mut hasher = Blake2bVar::new(<DS<D> as ByteSize>::BYTES).unwrap();
+#[derive(Clone)]
+#[cfg_attr(docsrs, doc(cfg(feature = "blake2")))]
+pub struct Map<const B: usize = 128>;
+
+impl<const B: usize> crate::Map for Map<B> {
+    fn map<T: crate::BigInt, V: Into<Vec<u8>>>(v: V) -> T {
+        let mut hasher = Blake2bVar::new((B + 7) / 8).unwrap();
         hasher.update(<V as Into<Vec<u8>>>::into(v).as_slice());
-        let mut buf = vec![Default::default(); <DS<D> as ByteSize>::BYTES];
+        let mut buf = vec![Default::default(); (B + 7) / 8];
         hasher.finalize_variable(&mut buf).unwrap();
         buf.as_slice().into()
     }

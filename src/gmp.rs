@@ -1,10 +1,9 @@
 //! Module for implementations using [rust-gmp](https://docs.rs/rust-gmp).
 use gmp::mpz::Mpz;
-use crate::{
-    BigInt as BigIntTrait,
-};
+use crate::BigInt as BigIntTrait;
 
 /// Implementation of [`BigInt`] using [rust-gmp](https://docs.rs/rust-gmp).
+#[cfg_attr(docsrs, doc(cfg(feature = "gmp")))]
 pub struct BigInt {
     v: Mpz,
 }

@@ -1,6 +1,12 @@
 //! Benchmark the performance of updating witnesses with respect to a variable
 //! bucket size of elements with turnover.
-use clacc::{Accumulator, Update, Witness, gmp::BigInt};
+use clacc::{
+    Accumulator,
+    Update,
+    Witness,
+    blake2::Map,
+    gmp::BigInt,
+};
 use criterion::{
     BatchSize::SmallInput,
     Bencher,
@@ -8,7 +14,8 @@ use criterion::{
     Criterion,
     SamplingMode,
     Throughput,
-    criterion_group, criterion_main,
+    criterion_group,
+    criterion_main,
 };
 use crossbeam::thread;
 use num_cpus;
@@ -116,7 +123,7 @@ fn update_witnesses_bench<'r, 's, 't0>(
             *element = bytes[start..end].to_vec();
         }
         // Create accumulator.
-        let mut acc = Accumulator::<BigInt>::with_private_key(
+        let mut acc = Accumulator::<BigInt, Map>::with_private_key(
             P.to_vec().as_slice().into(),
             Q.to_vec().as_slice().into(),
         );
