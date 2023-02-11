@@ -6,9 +6,9 @@ use ripemd::{Digest, Ripemd128};
 pub struct Map;
 
 impl crate::Map for Map {
-    fn map<T: crate::BigInt, V: Into<Vec<u8>>>(v: V) -> T {
+    fn map<V: Into<Vec<u8>>>(v: V) -> Vec<u8> {
         let mut hasher = Ripemd128::new();
         hasher.update(<V as Into<Vec<u8>>>::into(v).as_slice());
-        hasher.finalize().as_slice().into()
+        hasher.finalize().to_vec()
     }
 }

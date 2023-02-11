@@ -5,7 +5,6 @@ use clacc::{
     Update,
     Witness,
     blake2::Map,
-    gmp::BigInt,
 };
 use criterion::{
     BatchSize::SmallInput,
@@ -18,6 +17,7 @@ use criterion::{
     criterion_main,
 };
 use crossbeam::thread;
+use gmp::mpz::Mpz;
 use num_cpus;
 use rand::RngCore;
 use std::sync::{Arc, Mutex};
@@ -90,13 +90,13 @@ fn update_witnesses_bench<'r, 's, 't0>(
     let staticels_count = params.bucket_size - params.deletions_count;
     bencher.iter_batched(|| {
         let mut rng = rand::thread_rng();
-        let mut deletions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+        let mut deletions: Vec<(Vec<u8>, Witness<_>)> = vec![
             Default::default(); params.deletions_count
         ];
-        let mut additions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+        let mut additions: Vec<(Vec<u8>, Witness<_>)> = vec![
             Default::default(); params.additions_count
         ];
-        let mut staticels: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+        let mut staticels: Vec<(Vec<u8>, Witness<_>)> = vec![
             Default::default(); staticels_count
         ];
         // Generate random bytes for element data.
@@ -123,7 +123,7 @@ fn update_witnesses_bench<'r, 's, 't0>(
             *element = bytes[start..end].to_vec();
         }
         // Create accumulator.
-        let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+        let mut acc = Accumulator::<Mpz, Map>::with_private_key(
             P.to_vec().as_slice().into(),
             Q.to_vec().as_slice().into(),
         );

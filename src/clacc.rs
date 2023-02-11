@@ -32,49 +32,44 @@ pub mod blake2;
 #[cfg(feature = "gmp")]
 pub mod gmp;
 
+#[cfg(feature = "bigint")]
+pub mod bigint;
+
 #[cfg(feature = "ripemd")]
 pub mod ripemd;
-
-#[cfg(feature = "serde")]
-pub mod serde;
 
 /// The accumulator base.
 const BASE: i64 = 65537;
 
 /// A trait describing an arbitrary precision integer.
 pub trait BigInt:
-    Default
-    + From<i64>
-    + for<'a> From<&'a [u8]>
-    + Clone
+    Clone
     + Sized
     + Send
     + Sync
     + Eq
     + PartialOrd
-    + std::fmt::Debug
-    + std::fmt::Display
-    + std::fmt::LowerHex
-    + std::fmt::UpperHex
+    + std::ops::Add<Output = Self>
+    + std::ops::Sub<Output = Self>
+    + std::ops::Mul<Output = Self>
+    + std::ops::Rem<Output = Self>
+    + std::ops::MulAssign
+    + std::ops::DivAssign
 {
-    /// Returns `self + other`.
-    fn add<'a>(&self, other: &'a Self) -> Self;
+    /// Constructs a [`BigInt`] from an i64.
+    fn from_i64(v: i64) -> Self;
 
-    /// Returns `self - other`.
-    fn sub<'a>(&self, other: &'a Self) -> Self;
+    /// Constructs a [`BigInt`] from a slice of bytes, with the most
+    /// significant byte first.
+    fn from_bytes_be(bytes: &[u8]) -> Self;
 
-    /// Returns `self * other`.
-    fn mul<'a>(&self, other: &'a Self) -> Self;
-
-    /// Returns `self / other`.
-    fn div<'a>(&self, other: &'a Self) -> Self;
+    /// Constructs a byte vector of the [`BigInt`] with the most significant
+    /// byte first.
+    fn to_bytes_be(&self) -> Vec<u8>;
 
     /// Returns the greatest common divisor of `self` and the coefficients `a`
     /// and `b` satisfying `ax + by = g`.
     fn gcdext<'a>(&self, y: &'a Self) -> (Self, Self, Self);
-
-    /// Return the modulus of `self / m`.
-    fn modulus<'a>(&self, m: &'a Self) -> Self;
 
     /// Returns `self^e mod m`.
     fn powm<'a>(&self, e: &'a Self, m: &Self) -> Self;
@@ -87,15 +82,12 @@ pub trait BigInt:
 
     /// Returns the size of `self` in bits.
     fn size_in_bits(&self) -> usize;
-
-    /// Export `self` as a u8 vector.
-    fn to_vec(&self) -> Vec<u8>;
 }
 
 /// A trait describing a conversion from an arbitrary type to a fixed size
-/// [`BigInt`].
+/// byte vector.
 pub trait Map: Clone {
-    fn map<T: BigInt, V: Into<Vec<u8>>>(v: V) -> T;
+    fn map<V: Into<Vec<u8>>>(v: V) -> Vec<u8>;
 }
 
 /// An accumulator.
@@ -104,7 +96,7 @@ pub trait Map: Clone {
 /// the size of its internal parameters. That is, the number of digits in the
 /// accumulation `z` will never exceed the number of digits in the modulus
 /// `n`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Accumulator<T: BigInt, M: Map> {
 
     /// The current accumulation value.
@@ -131,20 +123,21 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// ```
     pub fn with_private_key(p: T, q: T) -> Self {
+        let bn1 = T::from_i64(1);
         Accumulator {
-            d: Some(p.sub(&1.into()).mul(&q.sub(&1.into()))),
-            n: p.mul(&q),
-            z: BASE.into(),
+            d: Some((p.clone() - bn1.clone()) * (q.clone() - bn1.into())),
+            n: p * q,
+            z: T::from_i64(BASE),
             map: PhantomData,
         }
     }
@@ -160,15 +153,10 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     ///     BigInt as BigIntTrait,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// use rand::RngCore;
     /// let mut rng = rand::thread_rng();
-    /// let acc = Accumulator::<BigInt, Map>::with_random_key(
-    ///     |bytes| rng.fill_bytes(bytes),
-    ///     None,
-    /// ).0;
-    /// assert_eq!(acc.get_public_key().size_in_bits(), 3072);
     /// let acc = Accumulator::<BigInt, Map>::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     Some(256),
@@ -189,13 +177,13 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         let mut bytes = vec![0; prime_bytes];
         loop {
             fill_bytes(&mut bytes);
-            p = T::from(bytes.as_slice()).next_prime();
+            p = T::from_bytes_be(bytes.as_slice()).next_prime();
             fill_bytes(&mut bytes);
-            q = T::from(bytes.as_slice()).next_prime();
-            if p.mul(&q).size_in_bits() != mod_bits {
+            q = T::from_bytes_be(bytes.as_slice()).next_prime();
+            if (p.clone() * q.clone()).size_in_bits() != mod_bits {
                 continue;
             }
-            if p < q {
+            if p.clone() < q.clone() {
                 std::mem::swap(&mut p, &mut q);
             }
             break;
@@ -211,18 +199,18 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let acc = Accumulator::<BigInt, Map>::with_public_key(
-    ///     n.as_slice().into(),
+    ///    <BigInt as clacc::BigInt>::from_bytes_be( n.as_slice()),
     /// );
     /// ```
     pub fn with_public_key(n: T) -> Self {
         Accumulator {
             d: None,
             n: n,
-            z: BASE.into(),
+            z: T::from_i64(BASE),
             map: PhantomData,
         }
     }
@@ -233,16 +221,19 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
-    /// assert_eq!(acc.get_public_key(), n.as_slice().into());
+    /// assert_eq!(
+    ///   acc.get_public_key(),
+    ///   <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    /// );
     /// ```
     pub fn get_public_key(&self) -> T {
         self.n.clone()
@@ -254,11 +245,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
-    ///     n.as_slice().into()
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc.add(&x);
@@ -272,13 +263,13 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc.add(&x);
@@ -288,11 +279,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         &mut self,
         v: &'a V,
     ) -> Witness<T> {
-        let x = M::map::<T, V>(v.clone());
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
-            nonce: x_p.sub(&x),
+            nonce: x_p.clone() - x,
         };
         self.z = self.z.powm(&x_p, &self.n);
         w
@@ -304,13 +295,13 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc.add(&x);
@@ -326,11 +317,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
-    ///     n.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice())
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc.add(&x);
@@ -347,8 +338,8 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
                 return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
             },
         };
-        let x = M::map::<T, V>(v.clone());
-        let x_p = x.add(&w.nonce);
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x_p = x + w.nonce.clone();
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err(Error { source: Box::new(ErrorElementNotFound) });
         }
@@ -368,13 +359,13 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// acc.add(&x);
@@ -389,11 +380,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
-    ///     n.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// acc.add(&x);
@@ -409,7 +400,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
                 return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
             },
         };
-        let x = M::map::<T, V>(v.clone());
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
         let x_p = x.next_prime();
         let x_i = match x_p.invert(d) {
             Some(x_i) => x_i,
@@ -419,7 +410,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         };
         Ok(Witness {
             u: self.z.powm(&x_i, &self.n),
-            nonce: x_p.sub(&x),
+            nonce: x_p - x,
         })
     }
 
@@ -429,11 +420,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
-    ///     n.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc.add(&x);
@@ -447,13 +438,13 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc.add(&x);
@@ -464,8 +455,8 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         v: &'a V,
         w: &Witness<T>,
     ) -> Result<(), Error> {
-        let x = M::map::<T, V>(v.clone());
-        let x_p = x.add(&w.nonce);
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x_p = x + w.nonce.clone();
         if self.z != w.u.powm(&x_p, &self.n) {
             Err(Error { source: Box::new(ErrorElementNotFound) })
         } else {
@@ -480,11 +471,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     Witness,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
-    ///     n.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// let y = b"def".to_vec();
@@ -512,17 +503,17 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc_prv = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc_pub = Accumulator::<BigInt, Map>::with_public_key(
-    ///     n.as_slice().into()
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
     /// let w = acc_prv.add(&x);
@@ -535,21 +526,8 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
 
 }
 
-impl<T: BigInt, M: Map> std::fmt::Display for Accumulator<T, M> {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>
-    ) -> std::fmt::Result {
-        match self.d.as_ref() {
-            Some(d) => f.write_fmt(format_args!("({:x}, {:x}, {:x})", d,
-                                                self.n, self.z)),
-            None => f.write_fmt(format_args!("({:x}, {:x})", self.n, self.z)),
-        }
-    }
-}
-
 /// A witness of an element's membership in an accumulator.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "T: Serialize, for<'a> T: Deserialize<'a>"))]
 pub struct Witness<T: BigInt> {
@@ -576,17 +554,18 @@ impl<T: BigInt> Witness<T> {
 
 }
 
-impl<T: BigInt> std::fmt::Display for Witness<T> {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
-        f.write_fmt(format_args!("({:x}, {:x})", self.u, self.nonce))
+impl<T: BigInt> Default for Witness<T> {
+    fn default() -> Self {
+        let bn0 = T::from_i64(0);
+        Witness {
+            u: bn0.clone(),
+            nonce: bn0.clone(),
+        }
     }
 }
 
 /// A sum of updates to be applied to witnesses.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Update<T: BigInt, M: Map> {
     pi_a: T,
     pi_d: T,
@@ -607,9 +586,10 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
 
     /// Create a new batched update.
     pub fn new() -> Self {
+        let bn1 = T::from_i64(1);
         Update {
-            pi_a: 1.into(),
-            pi_d: 1.into(),
+            pi_a: bn1.clone(),
+            pi_d: bn1.clone(),
             map: PhantomData,
         }
     }
@@ -620,9 +600,9 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
         v: &'a V,
         w: &Witness<T>,
     ) {
-        let x = M::map::<T, V>(v.clone());
-        let x_p = x.add(&w.nonce);
-        self.pi_a = self.pi_a.mul(&x_p);
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x_p = x + w.nonce.clone();
+        self.pi_a *= x_p;
     }
 
     /// Absorb an element that must be deleted from a witness.
@@ -631,9 +611,9 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
         v: &'a V,
         w: &Witness<T>,
     ) {
-        let x = M::map::<T, V>(v.clone());
-        let x_p = x.add(&w.nonce);
-        self.pi_d = self.pi_d.mul(&x_p);
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x_p = x + w.nonce.clone();
+        self.pi_d *= x_p;
     }
 
     /// Undo an absorbed element's addition into an update.
@@ -642,9 +622,9 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
         v: &'a V,
         w: &Witness<T>,
     ) {
-        let x = M::map::<T, V>(v.clone());
-        let x_p = x.add(&w.nonce);
-        self.pi_a = self.pi_a.div(&x_p);
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x_p = x + w.nonce.clone();
+        self.pi_a /= x_p;
     }
 
     /// Undo an absorbed element's deletion from an update.
@@ -653,9 +633,9 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
         v: &'a V,
         w: &Witness<T>,
     ) {
-        let x = M::map::<T, V>(v.clone());
-        let x_p = x.add(&w.nonce);
-        self.pi_d = self.pi_a.div(&x_p);
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x_p = x + w.nonce.clone();
+        self.pi_d /= x_p;
     }
 
     /// Update a witness. The update will include all additions and deletions
@@ -666,15 +646,15 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///     Accumulator,
     ///     Update,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// // In this example, the update will include a deletion, so the
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// // Create the static element.
     /// let xs = b"abc".to_vec();
@@ -703,12 +683,13 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
         v: &'a V,
         w: &Witness<T>,
     ) -> Witness<T> {
-        let x = M::map::<T, V>(v.clone());
-        let x_p = x.add(&w.nonce);
+        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x_p = x + w.nonce.clone();
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
-            u: w.u.powm(&a.mul(&self.pi_a), &acc.n)
-                .mul(&acc.z.powm(&b, &acc.n)).modulus(&acc.n),
+            u: (w.u.powm(&(a * self.pi_a.clone()), &acc.n)
+                * acc.z.powm(&b, &acc.n))
+                % acc.n.clone(),
             nonce: w.nonce.clone(),
         }
     }
@@ -734,8 +715,8 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///     Update,
     ///     Witness,
     ///     blake2::Map,
-    ///     gmp::BigInt,
     /// };
+    /// use num_bigint_dig::BigInt;
     /// use crossbeam::thread;
     /// use num_cpus;
     /// use rand::RngCore;
@@ -745,13 +726,13 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// const DELETIONS_COUNT: usize = 2;
     /// const ADDITIONS_COUNT: usize = 10;
     /// const STATICELS_COUNT: usize = BUCKET_SIZE - DELETIONS_COUNT;
-    /// let mut deletions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    /// let mut deletions: Vec<(Vec<u8>, Witness<_>)> = vec![
     ///     Default::default(); DELETIONS_COUNT
     /// ];
-    /// let mut additions: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    /// let mut additions: Vec<(Vec<u8>, Witness<_>)> = vec![
     ///     Default::default(); ADDITIONS_COUNT
     /// ];
-    /// let mut staticels: Vec<(Vec<u8>, Witness<BigInt>)> = vec![
+    /// let mut staticels: Vec<(Vec<u8>, Witness<_>)> = vec![
     ///     Default::default(); STATICELS_COUNT
     /// ];
     /// let mut rng = rand::thread_rng();
@@ -772,8 +753,8 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
-    ///     p.as_slice().into(),
-    ///     q.as_slice().into(),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
+    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// // Accumulate elements.
     /// for (element, _) in deletions.iter() {
@@ -866,15 +847,6 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
             }
             *witness = u.update_witness(acc, element, witness);
         }
-    }
-}
-
-impl<T: BigInt, M: Map> std::fmt::Display for Update<T, M> {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
-        f.write_fmt(format_args!("({:x}, {:x})", self.pi_a, self.pi_d))
     }
 }
 
