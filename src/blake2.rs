@@ -1,4 +1,4 @@
-//! Module for implementations using [blake2](https://docs.rs/blake2).
+//! Module for implementations using [`::blake2`].
 use blake2::{Blake2bVar, digest::{Update, VariableOutput}};
 
 #[derive(Clone)]

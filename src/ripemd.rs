@@ -1,4 +1,4 @@
-//! Module for implementations using [ripemd](https://docs.rs/ripemd).
+//! Module for implementations using [`::ripemd`].
 use ripemd::{Digest, Ripemd128};
 
 #[derive(Clone)]

@@ -1,7 +1,6 @@
-//! Module for implementations using [rust-gmp](https://docs.rs/rust-gmp).
+//! Module for implementations using [`::gmp`].
 use gmp::mpz::Mpz;
 
-/// Implementation of [`BigInt`] using [rust-gmp](https://docs.rs/rust-gmp).
 #[cfg_attr(docsrs, doc(cfg(feature = "gmp")))]
 impl crate::BigInt for Mpz {
 

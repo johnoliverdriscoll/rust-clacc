@@ -1,4 +1,4 @@
-//! Module for implementations using [num-bigint](https://docs.rs/num-bigint).
+//! Module for implementations using [`::num_bigint_dig`].
 use num_bigint_dig::{
     BigInt,
     ExtendedGcd,
@@ -8,7 +8,6 @@ use num_bigint_dig::{
     prime::next_prime,
 };
 
-/// Implementation of [`BigInt`] using [num-bigint](https://docs.rs/num-bigint).
 #[cfg_attr(docsrs, doc(cfg(feature = "bigint")))]
 impl crate::BigInt for BigInt {
 

@@ -24,4 +24,24 @@ and is able to add and delete elements while untrusted workers are able to
 recalculate witnesses provided they have access to the previous witnesses,
 the current state of the accumulator, and its public key.
 
+## Backends
+This crate is built with modular integer type and cryptographic hash
+backends. Integer types must implement the [`BigInt`] trait. Hash functions
+must implement the [`Map`] trait.
+
+## Optional Features
+- `bigint` (default): Enable this feature to support
+  [`::num_bigint_dig::BigInt`] as an integer type. [`::num_bigint_dig`] is
+  a pure Rust big integer library.
+- `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
+  integer type. While [`::gmp`] is not a pure Rust library, it is
+  currently more performant than [`::num_bigint_dig`].
+- `blake2` (default): Enable this feature to support [`::blake2`] as a
+  hash function via [`blake2::Map`].
+- `ripemd`: Enable this feature to support [`::ripemd`] as a hash
+  function via [`ripemd::Map`].
+- `serde`: Enable this feature to support [`::serde::ser::Serialize`] and
+  [`::serde::de::Deserialize`] for [`Witness`]. Note that the if using
+  your own [`BigInt`] implementation, it must also support these traits.
+
 [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
