@@ -34,7 +34,6 @@ serde = ["dep:serde", "rust-gmp-serde?/serde_support", "num-bigint?/serde"]
 
 [dependencies]
 blake2 = {version = "0.10.6", optional = true}
-modinverse = {version = "0.1.1", optional = true}
 num-bigint = {version = "0.4.3", optional = true}
 num-integer = {version = "0.1.45", optional = true}
 num-modular = {version = "0.5.1", optional = true}
