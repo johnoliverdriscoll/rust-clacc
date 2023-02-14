@@ -19,6 +19,6 @@ jobs:
       - name: Install GMP
         run: sudo apt-get install -y libgmp3-dev
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --verbose --all-features
       - name: Run tests
         run: cargo test --verbose --all-features
