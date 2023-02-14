@@ -31,11 +31,11 @@ must implement the [`Map`] trait.
 
 ## Optional Features
 - `bigint` (default): Enable this feature to support
-  [`::num_bigint_dig::BigInt`] as an integer type. [`::num_bigint_dig`] is
+  [`::num_bigint::BigInt`] as an integer type. [`::num_bigint`] is
   a pure Rust big integer library.
 - `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
   integer type. While [`::gmp`] is not a pure Rust library, it is
-  currently more performant than [`::num_bigint_dig`].
+  currently more performant than [`::num_bigint`].
 - `blake2` (default): Enable this feature to support [`::blake2`] as a
   hash function via [`blake2::Map`].
 - `ripemd`: Enable this feature to support [`::ripemd`] as a hash
