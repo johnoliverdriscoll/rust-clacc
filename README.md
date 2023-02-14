@@ -34,14 +34,14 @@ must implement the [`Map`] trait.
   [`::num_bigint::BigInt`] as an integer type. [`::num_bigint`] is
   a pure Rust big integer library.
 - `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
-  integer type. While [`::gmp`] is not a pure Rust library, it is
+  integer type. [`::gmp`] is not a pure Rust library, but it is
   currently more performant than [`::num_bigint`].
 - `blake2` (default): Enable this feature to support [`::blake2`] as a
   hash function via [`blake2::Map`].
 - `ripemd`: Enable this feature to support [`::ripemd`] as a hash
   function via [`ripemd::Map`].
 - `serde`: Enable this feature to support [`::serde::ser::Serialize`] and
-  [`::serde::de::Deserialize`] for [`Witness`]. Note that the if using
-  your own [`BigInt`] implementation, it must also support these traits.
+  [`::serde::de::Deserialize`] for [`Witness`]. If using your own
+  [`BigInt`] implementation, it must also support these traits.
 
 [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
