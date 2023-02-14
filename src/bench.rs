@@ -18,6 +18,7 @@ use criterion::{
 };
 use crossbeam::thread;
 use gmp::mpz::Mpz;
+use num_bigint::BigInt;
 use num_cpus;
 use rand::RngCore;
 use std::sync::{Arc, Mutex};
@@ -83,7 +84,7 @@ const Q: [u8; 192] = [
     0x95, 0x0d, 0xbf, 0x4d, 0xc4, 0xc4, 0x01, 0xc7,
 ];
 
-fn update_witnesses_bench<'r, 's, 't0>(
+fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt>(
     bencher: &'r mut Bencher<'s>,
     params: &'t0 UpdateWitnessesParams,
 ) {
@@ -123,9 +124,9 @@ fn update_witnesses_bench<'r, 's, 't0>(
             *element = bytes[start..end].to_vec();
         }
         // Create accumulator.
-        let mut acc = Accumulator::<Mpz, Map>::with_private_key(
-            P.to_vec().as_slice().into(),
-            Q.to_vec().as_slice().into(),
+        let mut acc = Accumulator::<T, Map>::with_private_key(
+            T::from_bytes_be(P.to_vec().as_slice()),
+            T::from_bytes_be(Q.to_vec().as_slice()),
         );
         // Accumulate bucket elements.
         for (element, _) in deletions.iter() {
@@ -195,9 +196,14 @@ fn bench(c: &mut Criterion) {
         group.sampling_mode(SamplingMode::Flat);
         group.throughput(Throughput::Elements(bucket_size as u64));
         group.bench_with_input(
-            BenchmarkId::from_parameter(bucket_size),
+            BenchmarkId::from_parameter(format!("BigInt/{}", bucket_size)),
             &params,
-            update_witnesses_bench,
+            update_witnesses_bench::<BigInt>,
+        );
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("Mpz/{}", bucket_size)),
+            &params,
+            update_witnesses_bench::<Mpz>,
         );
     }
     group.finish();

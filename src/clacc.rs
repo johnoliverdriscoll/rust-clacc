@@ -25,11 +25,11 @@
 //!
 //! # Optional Features
 //! - `bigint` (default): Enable this feature to support
-//!   [`::num_bigint_dig::BigInt`] as an integer type. [`::num_bigint_dig`] is
+//!   [`::num_bigint::BigInt`] as an integer type. [`::num_bigint`] is
 //!   a pure Rust big integer library.
 //! - `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
 //!   integer type. While [`::gmp`] is not a pure Rust library, it is
-//!   currently more performant than [`::num_bigint_dig`].
+//!   currently more performant than [`::num_bigint`].
 //! - `blake2` (default): Enable this feature to support [`::blake2`] as a
 //!   hash function via [`blake2::Map`].
 //! - `ripemd`: Enable this feature to support [`::ripemd`] as a hash
@@ -69,6 +69,7 @@ pub trait BigInt:
     + Sync
     + Eq
     + PartialOrd
+    + std::ops::Neg
     + std::ops::Add<Output = Self>
     + std::ops::Sub<Output = Self>
     + std::ops::Mul<Output = Self>
@@ -91,11 +92,8 @@ pub trait BigInt:
     /// and `b` satisfying `ax + by = g`.
     fn gcdext<'a>(&self, y: &'a Self) -> (Self, Self, Self);
 
-    /// Returns `self^e mod m`.
+    /// Returns `self^e mod m`..
     fn powm<'a>(&self, e: &'a Self, m: &Self) -> Self;
-
-    /// Returns `self^-1 mod m`.
-    fn invert<'a>(&self, m: &'a Self) -> Option<Self>;
 
     /// Returns the next prime greater than `self`.
     fn next_prime(&self) -> Self;
@@ -144,7 +142,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let acc = Accumulator::<BigInt, Map>::with_private_key(
@@ -174,7 +172,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     blake2::Map,
     ///     BigInt as BigIntTrait,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// use rand::RngCore;
     /// let mut rng = rand::thread_rng();
     /// let acc = Accumulator::<BigInt, Map>::with_random_key(
@@ -220,7 +218,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let acc = Accumulator::<BigInt, Map>::with_public_key(
     ///    <BigInt as clacc::BigInt>::from_bytes_be( n.as_slice()),
@@ -242,7 +240,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let n = vec![0x0c, 0xa1];
@@ -266,7 +264,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
@@ -284,7 +282,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
@@ -316,7 +314,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
@@ -338,7 +336,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice())
@@ -363,12 +361,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err(Error { source: Box::new(ErrorElementNotFound) });
         }
-        let x_i = match x_p.invert(d) {
-            Some(x_i) => x_i,
-            None => {
-                return Err(Error { source: Box::new(ErrorNoInverse) });
-            },
-        };
+        let x_i = x_p.powm(&T::from_i64(-1), &d);
         self.z = self.z.powm(&x_i, &self.n);
         Ok(self.z.clone())
     }
@@ -380,7 +373,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
@@ -401,7 +394,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
@@ -422,12 +415,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         };
         let x = T::from_bytes_be(M::map(v.clone()).as_slice());
         let x_p = x.next_prime();
-        let x_i = match x_p.invert(d) {
-            Some(x_i) => x_i,
-            None => {
-                return Err(Error { source: Box::new(ErrorNoInverse) });
-            },
-        };
+        let x_i = x_p.powm(&T::from_i64(-1), &d);
         Ok(Witness {
             u: self.z.powm(&x_i, &self.n),
             nonce: x_p - x,
@@ -441,7 +429,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
@@ -459,7 +447,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
@@ -492,7 +480,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Witness,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
@@ -524,7 +512,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     Accumulator,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let mut acc_prv = Accumulator::<BigInt, Map>::with_private_key(
@@ -667,7 +655,7 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///     Update,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// // In this example, the update will include a deletion, so the
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
@@ -736,7 +724,7 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///     Witness,
     ///     blake2::Map,
     /// };
-    /// use num_bigint_dig::BigInt;
+    /// use num_bigint::BigInt;
     /// use crossbeam::thread;
     /// use num_cpus;
     /// use rand::RngCore;
@@ -892,17 +880,6 @@ impl DisplayError for ErrorMissingPrivateKey {}
 impl std::fmt::Display for ErrorMissingPrivateKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Missing private key")
-    }
-}
-
-#[derive(Debug)]
-struct ErrorNoInverse;
-
-impl DisplayError for ErrorNoInverse {}
-
-impl std::fmt::Display for ErrorNoInverse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "No inverse")
     }
 }
 
