@@ -88,11 +88,11 @@ pub trait BigInt:
     /// byte first.
     fn to_bytes_be(&self) -> Vec<u8>;
 
-    /// Returns the greatest common divisor of `self` and the coefficients `a`
-    /// and `b` satisfying `ax + by = g`.
+    /// Returns (g, a, b) where `g` is the greatest common divisor of `self`
+    /// and `y` satisfying `g = a * self + b * y`.
     fn gcdext<'a>(&self, y: &'a Self) -> (Self, Self, Self);
 
-    /// Returns `self^e mod m`..
+    /// Returns `self^e (mod m)`.
     fn powm<'a>(&self, e: &'a Self, m: &Self) -> Self;
 
     /// Returns the next prime greater than `self`.
