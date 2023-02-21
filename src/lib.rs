@@ -105,6 +105,8 @@ pub trait BigInt:
 /// A trait describing a conversion from an arbitrary type to a fixed size
 /// byte vector.
 pub trait Map: Clone {
+
+    /// Convert an arbitrary type to a deterministic, fixed size byte vector.
     fn map<V: Into<Vec<u8>>>(v: V) -> Vec<u8>;
 }
 
@@ -270,8 +272,8 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// let w = acc.add(&x);
-    /// assert!(acc.verify(&x, &w).is_ok());
+    /// let w = acc.add(x.clone());
+    /// assert!(acc.verify(x.clone(), w).is_ok());
     /// ```
     ///
     /// This works with accumulators constructed from a public key or a
@@ -290,14 +292,14 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// let w = acc.add(&x);
-    /// assert!(acc.verify(&x, &w).is_ok());
+    /// let w = acc.add(x.clone());
+    /// assert!(acc.verify(x.clone(), w).is_ok());
     /// ```
-    pub fn add<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn add<V: Into<Vec<u8>>>(
         &mut self,
-        v: &'a V,
+        v: V,
     ) -> Witness<T> {
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x.next_prime();
         let w = Witness {
             u: self.z.clone(),
@@ -322,10 +324,10 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// let w = acc.add(&x);
-    /// assert!(acc.del(&x, &w).is_ok());
-    /// assert!(acc.verify(&x, &w).is_err());
-    /// assert!(acc.del(&x, &w).is_err());
+    /// let w = acc.add(x.clone());
+    /// assert!(acc.del(x.clone(), w.clone()).is_ok());
+    /// assert!(acc.verify(x.clone(), w.clone()).is_err());
+    /// assert!(acc.del(x.clone(), w.clone()).is_err());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
@@ -342,13 +344,13 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice())
     /// );
     /// let x = b"abc".to_vec();
-    /// let w = acc.add(&x);
-    /// assert!(acc.del(&x, &w).is_err());
+    /// let w = acc.add(x.clone());
+    /// assert!(acc.del(x.clone(), w).is_err());
     /// ```
-    pub fn del<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn del<V: Into<Vec<u8>>>(
         &mut self,
-        v: &'a V,
-        w: &Witness<T>,
+        v: V,
+        w: Witness<T>,
     ) -> Result<T, Error> {
         let d = match self.d.as_ref() {
             Some(d) => d,
@@ -356,7 +358,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
                 return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
             },
         };
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x + w.nonce.clone();
         if self.z != w.u.powm(&x_p, &self.n) {
             return Err(Error { source: Box::new(ErrorElementNotFound) });
@@ -381,9 +383,9 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// acc.add(&x);
-    /// let w = acc.prove(&x).unwrap();
-    /// assert!(acc.verify(&x, &w).is_ok());
+    /// acc.add(x.clone());
+    /// let w = acc.prove(x.clone()).unwrap();
+    /// assert!(acc.verify(x.clone(), w).is_ok());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
@@ -400,26 +402,25 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// acc.add(&x);
-    /// assert!(acc.prove(&x).is_err());
+    /// acc.add(x.clone());
+    /// assert!(acc.prove(x.clone()).is_err());
     /// ```
-    pub fn prove<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn prove<V: Into<Vec<u8>>>(
         &self,
-        v: &'a V,
+        v: V,
     ) -> Result<Witness<T>, Error> {
-        let d = match self.d.as_ref() {
-            Some(d) => d,
-            None => {
-                return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
+        match self.d.as_ref() {
+            Some(d) => {
+                let x = T::from_bytes_be(M::map(v).as_slice());
+                let x_p = x.next_prime();
+                let x_i = x_p.powm(&T::from_i64(-1), &d);
+                Ok(Witness {
+                    u: self.z.powm(&x_i, &self.n),
+                    nonce: x_p - x,
+                })
             },
-        };
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
-        let x_p = x.next_prime();
-        let x_i = x_p.powm(&T::from_i64(-1), &d);
-        Ok(Witness {
-            u: self.z.powm(&x_i, &self.n),
-            nonce: x_p - x,
-        })
+            None => Err(Error { source: Box::new(ErrorMissingPrivateKey) })
+        }
     }
 
     /// Verify an element is a member of an accumulator.
@@ -435,8 +436,8 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// let w = acc.add(&x);
-    /// assert!(acc.verify(&x, &w).is_ok());
+    /// let w = acc.add(x.clone());
+    /// assert!(acc.verify(x.clone(), w).is_ok());
     /// ```
     ///
     /// This works with accumulators constructed from a public key or a
@@ -455,15 +456,15 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// let w = acc.add(&x);
-    /// assert!(acc.verify(&x, &w).is_ok());
+    /// let w = acc.add(x.clone());
+    /// assert!(acc.verify(x.clone(), w).is_ok());
     /// ```
-    pub fn verify<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn verify<V: Into<Vec<u8>>>(
         &self,
-        v: &'a V,
-        w: &Witness<T>,
+        v: V,
+        w: Witness<T>,
     ) -> Result<(), Error> {
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x + w.nonce.clone();
         if self.z != w.u.powm(&x_p, &self.n) {
             Err(Error { source: Box::new(ErrorElementNotFound) })
@@ -488,18 +489,18 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// let x = b"abc".to_vec();
     /// let y = b"def".to_vec();
     /// // Add an element.
-    /// acc.add(&x);
+    /// acc.add(x);
     /// // Save the current accumulation. This value is effectively
     /// // a witness for the next element added.
     /// let u = acc.get_value().clone();
     /// // Add another element.
-    /// let nonce = acc.add(&y).nonce;
+    /// let nonce = acc.add(y.clone()).nonce;
     /// let w = Witness {
     ///     u: u,
     ///     nonce: nonce,
     /// };
     /// // Verify that `w` is a witness for `y`.
-    /// assert!(acc.verify(&y, &w).is_ok());
+    /// assert!(acc.verify(y.clone(), w).is_ok());
     /// ```
     pub fn get_value(&self) -> T {
         self.z.clone()
@@ -524,9 +525,9 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = b"abc".to_vec();
-    /// let w = acc_prv.add(&x);
+    /// let w = acc_prv.add(x.clone());
     /// acc_pub.set_value(acc_prv.get_value());
-    /// assert!(acc_prv.verify(&x, &w).is_ok());
+    /// assert!(acc_prv.verify(x.clone(), w).is_ok());
     /// ```
     pub fn set_value(&mut self, z: T) {
         self.z = z;
@@ -603,45 +604,45 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     }
 
     /// Absorb an element that must be added to a witness.
-    pub fn add<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn add<V: Into<Vec<u8>>>(
         &mut self,
-        v: &'a V,
-        w: &Witness<T>,
+        v: V,
+        w: Witness<T>,
     ) {
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x + w.nonce.clone();
         self.pi_a *= x_p;
     }
 
     /// Absorb an element that must be deleted from a witness.
-    pub fn del<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn del<V: Into<Vec<u8>>>(
         &mut self,
-        v: &'a V,
-        w: &Witness<T>,
+        v: V,
+        w: Witness<T>,
     ) {
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x + w.nonce.clone();
         self.pi_d *= x_p;
     }
 
     /// Undo an absorbed element's addition into an update.
-    pub fn undo_add<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn undo_add<V: Into<Vec<u8>>>(
         &mut self,
-        v: &'a V,
-        w: &Witness<T>,
+        v: V,
+        w: Witness<T>,
     ) {
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x + w.nonce.clone();
         self.pi_a /= x_p;
     }
 
     /// Undo an absorbed element's deletion from an update.
-    pub fn undo_del<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn undo_del<V: Into<Vec<u8>>>(
         &mut self,
-        v: &'a V,
-        w: &Witness<T>,
+        v: V,
+        w: Witness<T>,
     ) {
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x + w.nonce.clone();
         self.pi_d /= x_p;
     }
@@ -671,27 +672,27 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// // Create the addition.
     /// let xa = b"ghi".to_vec();
     /// // Add the deletion element.
-    /// acc.add(&xd);
+    /// acc.add(xd.clone());
     /// // Add the static element to the accumulator.
-    /// let mut wxs = acc.add(&xs);
+    /// let mut wxs = acc.add(xs.clone());
     /// // Delete the deletion element from the accumulator.
-    /// let wxd = acc.prove(&xd).unwrap();
-    /// acc.del(&xd, &wxd).unwrap();
+    /// let wxd = acc.prove(xd.clone()).unwrap();
+    /// acc.del(xd.clone(), wxd.clone()).unwrap();
     /// // Create an update object and absorb the addition and deletion.
     /// let mut u = Update::new();
-    /// u.del(&xd, &wxd);
-    /// u.add(&xa, &acc.add(&xa));
+    /// u.del(xd.clone(), wxd.clone());
+    /// u.add(xa.clone(), acc.add(xa.clone()));
     /// // Update the static element's witness.
-    /// wxs = u.update_witness(&acc, &xs, &wxs);
-    /// assert!(acc.verify(&xs, &wxs).is_ok());
+    /// wxs = u.update_witness(&acc, xs.clone(), wxs.clone());
+    /// assert!(acc.verify(xs.clone(), wxs.clone()).is_ok());
     /// ```
-    pub fn update_witness<'a, V: 'a + Clone + Into<Vec<u8>>>(
+    pub fn update_witness<V: Into<Vec<u8>>>(
         &self,
         acc: &Accumulator<T, M>,
-        v: &'a V,
-        w: &Witness<T>,
+        v: V,
+        w: Witness<T>,
     ) -> Witness<T> {
-        let x = T::from_bytes_be(M::map(v.clone()).as_slice());
+        let x = T::from_bytes_be(M::map(v).as_slice());
         let x_p = x + w.nonce.clone();
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
@@ -766,35 +767,35 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// );
     /// // Accumulate elements.
     /// for (element, _) in deletions.iter() {
-    ///     acc.add(element);
+    ///     acc.add(element.clone());
     /// }
     /// for (element, _) in staticels.iter() {
-    ///     acc.add(element);
+    ///     acc.add(element.clone());
     /// }
     /// // Generate witnesses for static elements.
     /// for (element, witness) in staticels.iter_mut() {
-    ///     *witness = acc.prove(element).unwrap()
+    ///     *witness = acc.prove(element.clone()).unwrap()
     /// }
     /// // Save accumulation at current state.
     /// let prev = acc.clone();
     /// // Accumulate deletions.
     /// for (element, witness) in deletions.iter_mut() {
-    ///     *witness = acc.prove(element).unwrap();
-    ///     acc.del(element, witness).unwrap();
+    ///     *witness = acc.prove(element.clone()).unwrap();
+    ///     acc.del(element.clone(), witness.clone()).unwrap();
     /// }
     /// // Accumulate additions.
     /// for (element, witness) in additions.iter_mut() {
-    ///     *witness = acc.add(element);
+    ///     *witness = acc.add(element.clone());
     ///     // Use the saved accumulation as the witness value.
     ///     witness.set_value(prev.get_value());
     /// }
     /// // Batch updates.
     /// let mut update = Update::new();
     /// for (element, witness) in deletions.iter() {
-    ///     update.del(element, witness);
+    ///     update.del(element.clone(), witness.clone());
     /// }
     /// for (element, witness) in additions.iter() {
-    ///     update.add(element, witness);
+    ///     update.add(element.clone(), witness.clone());
     /// }
     /// // Update all witnesses concurrently.
     /// let additions_iter = Arc::new(Mutex::new(additions.iter_mut()));
@@ -810,10 +811,10 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// }).unwrap();
     /// // Verify all updated witnesses.
     /// for (element, witness) in additions.iter() {
-    ///     assert!(acc.verify(element, witness).is_ok());
+    ///     assert!(acc.verify(element.clone(), witness.clone()).is_ok());
     /// }
     /// for (element, witness) in staticels.iter() {
-    ///     assert!(acc.verify(element, witness).is_ok());
+    ///     assert!(acc.verify(element.clone(), witness.clone()).is_ok());
     /// }
     /// ```
     pub fn update_witnesses<
@@ -850,10 +851,14 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
             let mut clone;
             if !is_static {
                 clone = self.clone();
-                clone.undo_add(element, witness);
+                clone.undo_add(element.clone(), witness.clone());
                 u = &clone;
             }
-            *witness = u.update_witness(acc, element, witness);
+            *witness = u.update_witness(
+                acc,
+                element.clone(),
+                witness.clone(),
+            );
         }
     }
 }

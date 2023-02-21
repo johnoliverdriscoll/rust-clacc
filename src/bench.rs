@@ -130,35 +130,35 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt>(
         );
         // Accumulate bucket elements.
         for (element, _) in deletions.iter() {
-            acc.add(element);
+            acc.add(element.clone());
         }
         for (element, _) in staticels.iter() {
-            acc.add(element);
+            acc.add(element.clone());
         }
         // Generate witnesses for static elements.
         for (element, witness) in staticels.iter_mut() {
-            *witness = acc.prove(element).unwrap();
+            *witness = acc.prove(element.clone()).unwrap();
         }
         // Save accumulation at current state.
         let prev = acc.clone();
         // Accumulate deletions.
         for (element, witness) in deletions.iter_mut() {
-            *witness = acc.prove(element).unwrap();
-            acc.del(element, witness).unwrap();
+            *witness = acc.prove(element.clone()).unwrap();
+            acc.del(element.clone(), witness.clone()).unwrap();
         }
         // Accumulate additions.
         for (element, witness) in additions.iter_mut() {
-            *witness = acc.add(element);
+            *witness = acc.add(element.clone());
             // Use the saved accumulation as the witness value.
             witness.set_value(prev.get_value());
         }
         // Batch updates.
         let mut update = Update::new();
         for (element, witness) in deletions.iter() {
-            update.del(element, witness);
+            update.del(element.clone(), witness.clone());
         }
         for (element, witness) in additions.iter() {
-            update.add(element, witness);
+            update.add(element.clone(), witness.clone());
         }
         (acc, update, additions, staticels)
     }, |(acc, update, mut additions, mut staticels)| {
@@ -170,7 +170,11 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt>(
                 let u = update.clone();
                 let add = Arc::clone(&additions);
                 let sta = Arc::clone(&staticels);
-                scope.spawn(move |_| u.update_witnesses(&acc, add, sta));
+                scope.spawn(move |_| u.update_witnesses(
+                    &acc,
+                    add.clone(),
+                    sta.clone(),
+                ));
             }
         }).unwrap();
     }, SmallInput);
