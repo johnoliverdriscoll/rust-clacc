@@ -36,12 +36,10 @@ must implement the [`Map`] trait.
 - `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
   integer type. [`::gmp`] is not a pure Rust library, but it is
   currently more performant than [`::num_bigint`].
-- `blake2` (default): Enable this feature to support [`::blake2`] as a
-  hash function via [`blake2::Map`].
-- `ripemd`: Enable this feature to support [`::ripemd`] as a hash
-  function via [`ripemd::Map`].
 - `serde`: Enable this feature to support [`::serde::ser::Serialize`] and
   [`::serde::de::Deserialize`] for [`Witness`]. If using your own
   [`BigInt`] implementation, it must also support these traits.
+- `sha3` (default): Enable this feature to support [`sha3::Shake128`]
+  and [`sha3::Shake256`] as hash functions via [`::sha3`].
 
 [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
