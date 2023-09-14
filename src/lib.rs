@@ -30,13 +30,11 @@
 //! - `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
 //!   integer type. [`::gmp`] is not a pure Rust library, but it is
 //!   currently more performant than [`::num_bigint`].
-//! - `blake2` (default): Enable this feature to support [`::blake2`] as a
-//!   hash function via [`blake2::Map`].
-//! - `ripemd`: Enable this feature to support [`::ripemd`] as a hash
-//!   function via [`ripemd::Map`].
 //! - `serde`: Enable this feature to support [`::serde::ser::Serialize`] and
 //!   [`::serde::de::Deserialize`] for [`Witness`]. If using your own
 //!   [`BigInt`] implementation, it must also support these traits.
+//! - `sha3` (default): Enable this feature to support [`sha3::Shake128`]
+//!   and [`sha3::Shake256`] as hash functions via [`::sha3`].
 //!
 //! [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -46,17 +44,14 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "serde")]
 use ::serde::{Serialize, Deserialize};
 
-#[cfg(feature = "blake2")]
-pub mod blake2;
-
 #[cfg(feature = "gmp")]
 pub mod gmp;
 
 #[cfg(feature = "bigint")]
 pub mod bigint;
 
-#[cfg(feature = "ripemd")]
-pub mod ripemd;
+#[cfg(feature = "sha3")]
+pub mod sha3;
 
 /// The accumulator base.
 const BASE: i64 = 65537;
@@ -142,7 +137,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
@@ -171,7 +166,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     ///     BigInt as BigIntTrait,
     /// };
     /// use num_bigint::BigInt;
@@ -218,7 +213,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
@@ -240,7 +235,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
@@ -264,7 +259,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
@@ -282,7 +277,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
@@ -314,7 +309,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
@@ -336,7 +331,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
@@ -373,7 +368,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
@@ -394,7 +389,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
@@ -428,7 +423,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
@@ -446,7 +441,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
@@ -479,7 +474,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     Witness,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
@@ -511,7 +506,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
@@ -654,7 +649,7 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     Update,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// // In this example, the update will include a deletion, so the
@@ -723,7 +718,7 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///     Accumulator,
     ///     Update,
     ///     Witness,
-    ///     blake2::Map,
+    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// use crossbeam::thread;
