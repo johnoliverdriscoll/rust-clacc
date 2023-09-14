@@ -66,6 +66,14 @@ impl crate::BigInt for BigInt {
     /// let c = <BigInt as clacc::BigInt>::powm(&b, &e, &m);
     /// assert_eq!(c, 8.into());
     /// ```
+    /// ```
+    /// use num_bigint::BigInt;
+    /// let b: BigInt = 3.into();
+    /// let e: BigInt = (-1).into();
+    /// let m: BigInt = 11.into();
+    /// let c = <BigInt as clacc::BigInt>::powm(&b, &e, &m);
+    /// assert_eq!(c, 4.into());
+    /// ```
     fn powm(&self, e: &Self, m: &Self) -> Self {
         match e.sign() {
             Sign::Plus | Sign::NoSign => self.modpow(e, m),
