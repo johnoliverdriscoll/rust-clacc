@@ -153,28 +153,23 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt>(
             witness.set_value(prev.get_value());
         }
         // Batch updates.
-        let mut update = Update::new();
+        let mut update = Update::new(&acc);
         for (element, witness) in deletions.iter() {
             update.del(element.clone(), witness.clone());
         }
         for (element, witness) in additions.iter() {
             update.add(element.clone(), witness.clone());
         }
-        (acc, update, additions, staticels)
-    }, |(acc, update, mut additions, mut staticels)| {
+        (update, additions, staticels)
+    }, |(update, mut additions, mut staticels)| {
         let additions = Arc::new(Mutex::new(additions.iter_mut()));
         let staticels = Arc::new(Mutex::new(staticels.iter_mut()));
         thread::scope(|scope| {
             for _ in 0..num_cpus::get() {
-                let acc = acc.clone();
                 let u = update.clone();
                 let add = Arc::clone(&additions);
                 let sta = Arc::clone(&staticels);
-                scope.spawn(move |_| u.update_witnesses(
-                    &acc,
-                    add.clone(),
-                    sta.clone(),
-                ));
+                scope.spawn(move |_| u.update_witnesses(add, sta));
             }
         }).unwrap();
     }, SmallInput);
@@ -212,6 +207,6 @@ fn bench(c: &mut Criterion) {
     }
     group.finish();
 }
- 
+
 criterion_group!(benches, bench);
 criterion_main!(benches);

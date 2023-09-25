@@ -571,6 +571,8 @@ impl<T: BigInt> Default for Witness<T> {
 /// A sum of updates to be applied to witnesses.
 #[derive(Default)]
 pub struct Update<T: BigInt, M: Map> {
+    n: T,
+    z: T,
     pi_a: T,
     pi_d: T,
     map: PhantomData<M>,
@@ -579,6 +581,8 @@ pub struct Update<T: BigInt, M: Map> {
 impl<T: BigInt, M: Map> Clone for Update<T, M> {
     fn clone(&self) -> Update<T, M> {
         Update {
+            n:  self.n.clone(),
+            z: self.z.clone(),
             pi_a: self.pi_a.clone(),
             pi_d: self.pi_d.clone(),
             map: PhantomData,
@@ -589,9 +593,11 @@ impl<T: BigInt, M: Map> Clone for Update<T, M> {
 impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
 
     /// Create a new batched update.
-    pub fn new() -> Self {
+    pub fn new(acc: &Accumulator<T, M>) -> Self {
         let bn1 = T::from_i64(1);
         Update {
+            n: acc.get_public_key(),
+            z: acc.get_value(),
             pi_a: bn1.clone(),
             pi_d: bn1.clone(),
             map: PhantomData,
@@ -673,17 +679,18 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// // Delete the deletion element from the accumulator.
     /// let wxd = acc.prove(xd.clone()).unwrap();
     /// acc.del(xd.clone(), wxd.clone()).unwrap();
+    /// // Add the addition element to the accumulator.
+    /// let wxa = acc.add(xa.clone());
     /// // Create an update object and absorb the addition and deletion.
-    /// let mut u = Update::new();
+    /// let mut u = Update::new(&acc);
     /// u.del(xd.clone(), wxd.clone());
-    /// u.add(xa.clone(), acc.add(xa.clone()));
+    /// u.add(xa.clone(), wxa.clone());
     /// // Update the static element's witness.
-    /// wxs = u.update_witness(&acc, xs.clone(), wxs.clone());
+    /// wxs = u.update_witness(xs.clone(), wxs.clone());
     /// assert!(acc.verify(xs.clone(), wxs.clone()).is_ok());
     /// ```
     pub fn update_witness<V: Into<Vec<u8>>>(
         &self,
-        acc: &Accumulator<T, M>,
         v: V,
         w: Witness<T>,
     ) -> Witness<T> {
@@ -691,9 +698,9 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
         let x_p = x + w.nonce.clone();
         let (_, a, b) = self.pi_d.gcdext(&x_p);
         Witness {
-            u: (w.u.powm(&(a * self.pi_a.clone()), &acc.n)
-                * acc.z.powm(&b, &acc.n))
-                % acc.n.clone(),
+            u: (w.u.powm(&(a * self.pi_a.clone()), &self.n)
+                * self.z.powm(&b, &self.n))
+                % self.n.clone(),
             nonce: w.nonce.clone(),
         }
     }
@@ -704,7 +711,7 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// update and that their witnesses are the accumulator's value before any
     /// of the additions or deletions absorbed by this update were applied.
     /// Updating the witnesses for each of these additional elements is thus
-    /// acheived by simply removing its respective element from the update and
+    /// achieved by simply removing its respective element from the update and
     /// applying the result to its witness.
     ///
     /// This method operates on atomic references to iterators over collections
@@ -785,7 +792,7 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///     witness.set_value(prev.get_value());
     /// }
     /// // Batch updates.
-    /// let mut update = Update::new();
+    /// let mut update = Update::new(&acc);
     /// for (element, witness) in deletions.iter() {
     ///     update.del(element.clone(), witness.clone());
     /// }
@@ -797,11 +804,10 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// let staticels_iter = Arc::new(Mutex::new(staticels.iter_mut()));
     /// thread::scope(|scope| {
     ///     for _ in 0..num_cpus::get() {
-    ///         let acc = acc.clone();
     ///         let u = update.clone();
     ///         let add = Arc::clone(&additions_iter);
     ///         let sta = Arc::clone(&staticels_iter);
-    ///         scope.spawn(move |_| u.update_witnesses(&acc, add, sta));
+    ///         scope.spawn(move |_| u.update_witnesses(add, sta));
     ///     }
     /// }).unwrap();
     /// // Verify all updated witnesses.
@@ -818,7 +824,6 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
         IS: Iterator<Item = &'u mut (V, Witness<T>)> + Send
     >(
         &self,
-        acc: &Accumulator<T, M>,
         additions: Arc<Mutex<IA>>,
         staticels: Arc<Mutex<IS>>,
     ) {
@@ -850,7 +855,6 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
                 u = &clone;
             }
             *witness = u.update_witness(
-                acc,
                 element.clone(),
                 witness.clone(),
             );
