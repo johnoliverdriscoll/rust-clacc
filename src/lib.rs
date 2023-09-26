@@ -19,9 +19,8 @@
 //! the current state of the accumulator, and its public key.
 //!
 //! # Backends
-//! This crate is built with modular integer type and cryptographic hash
-//! backends. Integer types must implement the [`BigInt`] trait. Hash functions
-//! must implement the [`Map`] trait.
+//! This crate is built with a modular integer type backend. Integer types must
+//! implement the [`BigInt`] trait. 
 //!
 //! # Optional Features
 //! - `bigint` (default): Enable this feature to support
@@ -30,28 +29,17 @@
 //! - `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
 //!   integer type. [`::gmp`] is not a pure Rust library, but it is
 //!   currently more performant than [`::num_bigint`].
-//! - `serde`: Enable this feature to support [`::serde::ser::Serialize`] and
-//!   [`::serde::de::Deserialize`] for [`Witness`]. If using your own
-//!   [`BigInt`] implementation, it must also support these traits.
-//! - `sha3` (default): Enable this feature to support [`sha3::Shake128`]
-//!   and [`sha3::Shake256`] as hash functions via [`::sha3`].
 //!
 //! [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "serde")]
-use ::serde::{Serialize, Deserialize};
 
 #[cfg(feature = "gmp")]
 pub mod gmp;
 
 #[cfg(feature = "bigint")]
 pub mod bigint;
-
-#[cfg(feature = "sha3")]
-pub mod sha3;
 
 /// The accumulator base.
 const BASE: i64 = 65537;
@@ -97,25 +85,13 @@ pub trait BigInt:
     fn size_in_bits(&self) -> usize;
 }
 
-/// A trait describing a conversion from an arbitrary type to a fixed size
-/// byte vector.
-pub trait Map: Clone {
-
-    /// Convert an arbitrary type to a deterministic, fixed size byte vector.
-    fn map<V: Into<Vec<u8>>>(v: V) -> Vec<u8>;
-}
-
 /// An accumulator.
 ///
 /// Elements may be added and deleted from the acculumator without increasing
-/// the size of its internal parameters. That is, the number of digits in the
-/// accumulation `z` will never exceed the number of digits in the modulus
-/// `n`.
+/// the size of its internal parameters. That is, the bit depth in the
+/// accumulation `z` will never exceed the bit depth in the modulus `n`.
 #[derive(Clone)]
-pub struct Accumulator<T: BigInt, M: Map> {
-
-    /// The current accumulation value.
-    z: T,
+pub struct Accumulator<T: BigInt> {
 
     /// Private exponent.
     d: Option<T>,
@@ -123,11 +99,11 @@ pub struct Accumulator<T: BigInt, M: Map> {
     /// Modulus.
     n: T,
 
-    /// Mapper marker.
-    map: PhantomData<M>,
+    /// The current accumulation value.
+    z: T,
 }
 
-impl<T: BigInt, M: Map> Accumulator<T, M> {
+impl<T: BigInt> Accumulator<T> {
 
     /// Initialize an accumulator from private key parameters. All
     /// accumulators are able to add elements and verify witnesses. An
@@ -135,14 +111,11 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// and prove elements after their addition.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
@@ -153,7 +126,6 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
             d: Some((p.clone() - bn1.clone()) * (q.clone() - bn1.into())),
             n: p * q,
             z: T::from_i64(BASE),
-            map: PhantomData,
         }
     }
 
@@ -166,13 +138,12 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// ```
     /// use clacc::{
     ///     Accumulator,
-    ///     sha3::Shake128 as Map,
     ///     BigInt as BigIntTrait,
     /// };
     /// use num_bigint::BigInt;
     /// use rand::RngCore;
     /// let mut rng = rand::thread_rng();
-    /// let acc = Accumulator::<BigInt, Map>::with_random_key(
+    /// let acc = Accumulator::<BigInt>::with_random_key(
     ///     |bytes| rng.fill_bytes(bytes),
     ///     Some(256),
     /// ).0;
@@ -203,7 +174,7 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
             }
             break;
         }
-        (Accumulator::<T, M>::with_private_key(p.clone(), q.clone()), p, q)
+        (Accumulator::<T>::with_private_key(p.clone(), q.clone()), p, q)
     }
 
     /// Initialize an accumulator from a public key. An accumulator
@@ -211,13 +182,10 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// witnesses.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
-    /// let acc = Accumulator::<BigInt, Map>::with_public_key(
+    /// let acc = Accumulator::<BigInt>::with_public_key(
     ///    <BigInt as clacc::BigInt>::from_bytes_be( n.as_slice()),
     /// );
     /// ```
@@ -226,22 +194,18 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
             d: None,
             n: n,
             z: T::from_i64(BASE),
-            map: PhantomData,
         }
     }
 
     /// Get an accumulator's public key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
@@ -254,98 +218,80 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
         self.n.clone()
     }
 
-    /// Add an element to an accumulator.
+    /// Add a prime to an accumulator.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
+    /// use rand::RngCore;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// let w = acc.add(x.clone());
-    /// assert!(acc.verify(x.clone(), w).is_ok());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(3);
+    /// let w = acc.add(&x);
+    /// assert!(acc.verify(&x, &w).is_ok());
     /// ```
     ///
     /// This works with accumulators constructed from a public key or a
     /// private key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// let w = acc.add(x.clone());
-    /// assert!(acc.verify(x.clone(), w).is_ok());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(3);
+    /// let w = acc.add(&x);
+    /// assert!(acc.verify(&x, &w).is_ok());
     /// ```
-    pub fn add<V: Into<Vec<u8>>>(
+    pub fn add(
         &mut self,
-        v: V,
-    ) -> Witness<T> {
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x.next_prime();
-        let w = Witness {
-            u: self.z.clone(),
-            nonce: x_p.clone() - x,
-        };
-        self.z = self.z.powm(&x_p, &self.n);
+        x: &T,
+    ) -> T {
+        let w = self.z.clone();
+        self.z = self.z.powm(&x, &self.n);
         w
     }
 
-    /// Delete an element from an accumulator.
+    /// Delete a prime from an accumulator.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// let w = acc.add(x.clone());
-    /// assert!(acc.del(x.clone(), w.clone()).is_ok());
-    /// assert!(acc.verify(x.clone(), w.clone()).is_err());
-    /// assert!(acc.del(x.clone(), w.clone()).is_err());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(7);
+    /// let w = acc.add(&x);
+    /// assert!(acc.del(&x).is_ok());
+    /// assert!(acc.verify(&x, &w).is_err());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
     /// key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice())
     /// );
-    /// let x = b"abc".to_vec();
-    /// let w = acc.add(x.clone());
-    /// assert!(acc.del(x.clone(), w).is_err());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(3);
+    /// acc.add(&x);
+    /// assert!(acc.del(&x).is_err());
     /// ```
-    pub fn del<V: Into<Vec<u8>>>(
+    pub fn del(
         &mut self,
-        v: V,
-        w: Witness<T>,
+        x: &T,
     ) -> Result<T, Error> {
         let d = match self.d.as_ref() {
             Some(d) => d,
@@ -353,115 +299,92 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
                 return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
             },
         };
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x + w.nonce.clone();
-        if self.z != w.u.powm(&x_p, &self.n) {
-            return Err(Error { source: Box::new(ErrorElementNotFound) });
-        }
-        let x_i = x_p.powm(&T::from_i64(-1), &d);
+        let x_i = x.powm(&T::from_i64(-1), &d);
         self.z = self.z.powm(&x_i, &self.n);
         Ok(self.z.clone())
     }
 
-    /// Generate a witness to an element's addition to the accumulation.
+    /// Generate a witness to a prime's addition to the accumulation.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// acc.add(x.clone());
-    /// let w = acc.prove(x.clone()).unwrap();
-    /// assert!(acc.verify(x.clone(), w).is_ok());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(7);
+    /// acc.add(&x);
+    /// let u = acc.prove(&x).unwrap();
+    /// assert!(acc.verify(&x, &u).is_ok());
     /// ```
     ///
     /// This will only succeed with an accumulator constructed from a private
     /// key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// acc.add(x.clone());
-    /// assert!(acc.prove(x.clone()).is_err());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(7);
+    /// acc.add(&x);
+    /// assert!(acc.prove(&x).is_err());
     /// ```
-    pub fn prove<V: Into<Vec<u8>>>(
+    pub fn prove(
         &self,
-        v: V,
-    ) -> Result<Witness<T>, Error> {
+        x: &T,
+    ) -> Result<T, Error> {
         match self.d.as_ref() {
             Some(d) => {
-                let x = T::from_bytes_be(M::map(v).as_slice());
-                let x_p = x.next_prime();
-                let x_i = x_p.powm(&T::from_i64(-1), &d);
-                Ok(Witness {
-                    u: self.z.powm(&x_i, &self.n),
-                    nonce: x_p - x,
-                })
+                let x_i = x.powm(&T::from_i64(-1), &d);
+                Ok(self.z.powm(&x_i, &self.n))
             },
             None => Err(Error { source: Box::new(ErrorMissingPrivateKey) })
         }
     }
 
-    /// Verify an element is a member of an accumulator.
+    /// Verify a prime is a member of an accumulator.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// let w = acc.add(x.clone());
-    /// assert!(acc.verify(x.clone(), w).is_ok());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(3);
+    /// let u = acc.add(&x);
+    /// assert!(acc.verify(&x, &u).is_ok());
     /// ```
     ///
     /// This works with accumulators constructed from a public key or a
     /// private key.
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// let w = acc.add(x.clone());
-    /// assert!(acc.verify(x.clone(), w).is_ok());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(3);
+    /// let w = acc.add(&x);
+    /// assert!(acc.verify(&x, &w).is_ok());
     /// ```
-    pub fn verify<V: Into<Vec<u8>>>(
+    pub fn verify(
         &self,
-        v: V,
-        w: Witness<T>,
+        x: &T,
+        w: &T,
     ) -> Result<(), Error> {
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x + w.nonce.clone();
-        if self.z != w.u.powm(&x_p, &self.n) {
+        let w_x = w.powm(x, &self.n);
+        if self.z != w_x {
             Err(Error { source: Box::new(ErrorElementNotFound) })
         } else {
             Ok(())
@@ -471,181 +394,114 @@ impl<T: BigInt, M: Map> Accumulator<T, M> {
     /// Return the accumulation value as a [`BigInt`].
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     Witness,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_public_key(
+    /// let mut acc = Accumulator::<BigInt>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// let y = b"def".to_vec();
+    /// let x = <BigInt as clacc::BigInt>::from_i64(3);
+    /// let y = <BigInt as clacc::BigInt>::from_i64(5);
     /// // Add an element.
-    /// acc.add(x);
+    /// acc.add(&x);
     /// // Save the current accumulation. This value is effectively
     /// // a witness for the next element added.
-    /// let u = acc.get_value().clone();
+    /// let w = acc.get_value().clone();
     /// // Add another element.
-    /// let nonce = acc.add(y.clone()).nonce;
-    /// let w = Witness {
-    ///     u: u,
-    ///     nonce: nonce,
-    /// };
+    /// acc.add(&y);
     /// // Verify that `w` is a witness for `y`.
-    /// assert!(acc.verify(y.clone(), w).is_ok());
+    /// assert!(acc.verify(&y, &w).is_ok());
     /// ```
-    pub fn get_value(&self) -> T {
+    pub fn get_value(
+        &self,
+    ) -> T {
         self.z.clone()
     }
 
     /// Set the accumulation value from a [`BigInt`].
     ///
     /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     sha3::Shake128 as Map,
-    /// };
+    /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc_prv = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc_prv = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// let n = vec![0x0c, 0xa1];
-    /// let mut acc_pub = Accumulator::<BigInt, Map>::with_public_key(
+    /// let mut acc_pub = Accumulator::<BigInt>::with_public_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
-    /// let x = b"abc".to_vec();
-    /// let w = acc_prv.add(x.clone());
-    /// acc_pub.set_value(acc_prv.get_value());
-    /// assert!(acc_prv.verify(x.clone(), w).is_ok());
+    /// let x = <BigInt as clacc::BigInt>::from_i64(3);
+    /// let w = acc_prv.add(&x);
+    /// acc_pub.set_value(&acc_prv.get_value());
+    /// assert!(acc_prv.verify(&x, &w).is_ok());
     /// ```
-    pub fn set_value(&mut self, z: T) {
-        self.z = z;
+    pub fn set_value(
+        &mut self,
+        z: &T,
+    ) {
+        self.z = z.clone();
     }
 
-}
-
-/// A witness of an element's membership in an accumulator.
-#[derive(Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(bound = "T: Serialize, for<'a> T: Deserialize<'a>"))]
-pub struct Witness<T: BigInt> {
-
-    /// The accumulation value less the element.
-    pub u: T,
-
-    /// A number that, when added to the element, uniquely maps the element to
-    /// a prime.
-    pub nonce: T,
-}
-
-impl<T: BigInt> Witness<T> {
-
-    /// Return the witness value as a [`BigInt`].
-    pub fn get_value(&self) -> T {
-        self.u.clone()
-    }
-
-    /// Set the witness value from a [`BigInt`].
-    pub fn set_value(&mut self, u: T) {
-        self.u = u;
-    }
-
-}
-
-impl<T: BigInt> Default for Witness<T> {
-    fn default() -> Self {
-        let bn0 = T::from_i64(0);
-        Witness {
-            u: bn0.clone(),
-            nonce: bn0.clone(),
-        }
-    }
 }
 
 /// A sum of updates to be applied to witnesses.
 #[derive(Default)]
-pub struct Update<T: BigInt, M: Map> {
+#[derive(Clone)]
+pub struct Update<T: BigInt> {
     n: T,
     z: T,
     pi_a: T,
     pi_d: T,
-    map: PhantomData<M>,
 }
 
-impl<T: BigInt, M: Map> Clone for Update<T, M> {
-    fn clone(&self) -> Update<T, M> {
-        Update {
-            n:  self.n.clone(),
-            z: self.z.clone(),
-            pi_a: self.pi_a.clone(),
-            pi_d: self.pi_d.clone(),
-            map: PhantomData,
-        }
-    }
-}
-
-impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
+impl<'u, T: 'u + BigInt> Update<T> {
 
     /// Create a new batched update.
-    pub fn new(acc: &Accumulator<T, M>) -> Self {
+    pub fn new(
+        acc: &Accumulator<T>,
+    ) -> Self {
         let bn1 = T::from_i64(1);
         Update {
             n: acc.get_public_key(),
             z: acc.get_value(),
             pi_a: bn1.clone(),
             pi_d: bn1.clone(),
-            map: PhantomData,
         }
     }
 
-    /// Absorb an element that must be added to a witness.
-    pub fn add<V: Into<Vec<u8>>>(
+    /// Absorb a prime that must be added to a witness.
+    pub fn add(
         &mut self,
-        v: V,
-        w: Witness<T>,
+        x: &T,
     ) {
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x + w.nonce.clone();
-        self.pi_a *= x_p;
+        self.pi_a *= x.clone();
     }
 
-    /// Absorb an element that must be deleted from a witness.
-    pub fn del<V: Into<Vec<u8>>>(
+    /// Absorb a prime that must be deleted from a witness.
+    pub fn del(
         &mut self,
-        v: V,
-        w: Witness<T>,
+        x: &T,
     ) {
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x + w.nonce.clone();
-        self.pi_d *= x_p;
+        self.pi_d *= x.clone();
     }
 
-    /// Undo an absorbed element's addition into an update.
-    pub fn undo_add<V: Into<Vec<u8>>>(
+    /// Undo an absorbed prime's addition into an update.
+    pub fn undo_add(
         &mut self,
-        v: V,
-        w: Witness<T>,
+        x: &T,
     ) {
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x + w.nonce.clone();
-        self.pi_a /= x_p;
+        self.pi_a /= x.clone();
     }
 
-    /// Undo an absorbed element's deletion from an update.
-    pub fn undo_del<V: Into<Vec<u8>>>(
+    /// Undo an absorbed prime's deletion from an update.
+    pub fn undo_del(
         &mut self,
-        v: V,
-        w: Witness<T>,
+        x: &T,
     ) {
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x + w.nonce.clone();
-        self.pi_d /= x_p;
+        self.pi_d /= x.clone();
     }
 
     /// Update a witness. The update will include all additions and deletions
@@ -655,54 +511,48 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// use clacc::{
     ///     Accumulator,
     ///     Update,
-    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// // In this example, the update will include a deletion, so the
     /// // accumulator must be created with a private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
-    /// // Create the static element.
-    /// let xs = b"abc".to_vec();
+    /// // Create the static elements.
+    /// let xs = <BigInt as clacc::BigInt>::from_i64(5);
     /// // Create the deletion.
-    /// let xd = b"def".to_vec();
+    /// let xd = <BigInt as clacc::BigInt>::from_i64(7);
     /// // Create the addition.
-    /// let xa = b"ghi".to_vec();
+    /// let xa = <BigInt as clacc::BigInt>::from_i64(11);
     /// // Add the deletion element.
-    /// acc.add(xd.clone());
+    /// acc.add(&xd);
     /// // Add the static element to the accumulator.
-    /// let mut wxs = acc.add(xs.clone());
+    /// let mut wxs = acc.add(&xs);
     /// // Delete the deletion element from the accumulator.
-    /// let wxd = acc.prove(xd.clone()).unwrap();
-    /// acc.del(xd.clone(), wxd.clone()).unwrap();
+    /// acc.prove(&xd).unwrap();
+    /// acc.del(&xd).unwrap();
     /// // Add the addition element to the accumulator.
-    /// let wxa = acc.add(xa.clone());
+    /// acc.add(&xa);
     /// // Create an update object and absorb the addition and deletion.
     /// let mut u = Update::new(&acc);
-    /// u.del(xd.clone(), wxd.clone());
-    /// u.add(xa.clone(), wxa.clone());
+    /// u.del(&xd);
+    /// u.add(&xa);
     /// // Update the static element's witness.
-    /// wxs = u.update_witness(xs.clone(), wxs.clone());
-    /// assert!(acc.verify(xs.clone(), wxs.clone()).is_ok());
+    /// wxs = u.update_witness(&xs, &wxs);
+    /// assert!(acc.verify(&xs, &wxs).is_ok());
     /// ```
-    pub fn update_witness<V: Into<Vec<u8>>>(
+    pub fn update_witness(
         &self,
-        v: V,
-        w: Witness<T>,
-    ) -> Witness<T> {
-        let x = T::from_bytes_be(M::map(v).as_slice());
-        let x_p = x + w.nonce.clone();
-        let (_, a, b) = self.pi_d.gcdext(&x_p);
-        Witness {
-            u: (w.u.powm(&(a * self.pi_a.clone()), &self.n)
-                * self.z.powm(&b, &self.n))
-                % self.n.clone(),
-            nonce: w.nonce.clone(),
-        }
+        x: &T,
+        w: &T,
+    ) -> T {
+        let (_, a, b) = self.pi_d.gcdext(&x);
+        (w.powm(&(a * self.pi_a.clone()), &self.n)
+         * self.z.powm(&b, &self.n))
+            % self.n.clone()
     }
 
     /// Thread-safe method that updates multiple witnesses.
@@ -716,16 +566,15 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///
     /// This method operates on atomic references to iterators over collections
     /// of element-witness pairs. An invocation will run until the referenced
-    /// iterators have reached the end of their collections. To update witnesses
-    /// concurrently, simply invoke this method from multiple threads using
-    /// references to the same iterators.
+    /// iterators have reached the end of their collections. To update
+    /// witnesses concurrently, simply invoke this method from multiple threads
+    /// using references to the same iterators.
     ///
     /// ```
     /// use clacc::{
     ///     Accumulator,
+    ///     BigInt as BigIntTrait,
     ///     Update,
-    ///     Witness,
-    ///     sha3::Shake128 as Map,
     /// };
     /// use num_bigint::BigInt;
     /// use crossbeam::thread;
@@ -737,67 +586,70 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     /// const DELETIONS_COUNT: usize = 2;
     /// const ADDITIONS_COUNT: usize = 10;
     /// const STATICELS_COUNT: usize = BUCKET_SIZE - DELETIONS_COUNT;
-    /// let mut deletions: Vec<(Vec<u8>, Witness<_>)> = vec![
+    /// let mut deletions: Vec<(BigInt, BigInt)> = vec![
     ///     Default::default(); DELETIONS_COUNT
     /// ];
-    /// let mut additions: Vec<(Vec<u8>, Witness<_>)> = vec![
+    /// let mut additions: Vec<(BigInt, BigInt)> = vec![
     ///     Default::default(); ADDITIONS_COUNT
     /// ];
-    /// let mut staticels: Vec<(Vec<u8>, Witness<_>)> = vec![
+    /// let mut staticels: Vec<(BigInt, BigInt)> = vec![
     ///     Default::default(); STATICELS_COUNT
     /// ];
     /// let mut rng = rand::thread_rng();
     /// let mut bytes = vec![0; 8];
     /// for deletion in deletions.iter_mut() {
     ///     rng.fill_bytes(&mut bytes);
-    ///     deletion.0 = bytes.clone();
+    ///     let x = <BigInt as clacc::BigInt>::from_bytes_be(bytes.as_slice());
+    ///     deletion.0 = x.next_prime();
     /// }
     /// for addition in additions.iter_mut() {
     ///     rng.fill_bytes(&mut bytes);
-    ///     addition.0 = bytes.clone();
+    ///     let x = <BigInt as clacc::BigInt>::from_bytes_be(bytes.as_slice());
+    ///     addition.0 = x.next_prime();
     /// }
     /// for staticel in staticels.iter_mut() {
     ///     rng.fill_bytes(&mut bytes);
-    ///     staticel.0 = bytes.clone();
+    ///     let x = <BigInt as clacc::BigInt>::from_bytes_be(bytes.as_slice());
+    ///     staticel.0 = x.next_prime();
     /// }
     /// // Create accumulator with private key.
     /// let p = vec![0x3d];
     /// let q = vec![0x35];
-    /// let mut acc = Accumulator::<BigInt, Map>::with_private_key(
+    /// let mut acc = Accumulator::<BigInt>::with_private_key(
     ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
     ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
     /// );
     /// // Accumulate elements.
-    /// for (element, _) in deletions.iter() {
-    ///     acc.add(element.clone());
+    /// for (x, _) in deletions.iter() {
+    ///     acc.add(&x);
     /// }
-    /// for (element, _) in staticels.iter() {
-    ///     acc.add(element.clone());
+    /// for (x, _) in staticels.iter() {
+    ///     acc.add(&x);
     /// }
     /// // Generate witnesses for static elements.
-    /// for (element, witness) in staticels.iter_mut() {
-    ///     *witness = acc.prove(element.clone()).unwrap()
+    /// for (x, w) in staticels.iter_mut() {
+    ///     *w = acc.prove(&x).unwrap()
     /// }
     /// // Save accumulation at current state.
     /// let prev = acc.clone();
     /// // Accumulate deletions.
-    /// for (element, witness) in deletions.iter_mut() {
-    ///     *witness = acc.prove(element.clone()).unwrap();
-    ///     acc.del(element.clone(), witness.clone()).unwrap();
+    /// for (x, w) in deletions.iter_mut() {
+    ///     *w = acc.prove(&x).unwrap();
+    ///     acc.del(&x).unwrap();
     /// }
     /// // Accumulate additions.
-    /// for (element, witness) in additions.iter_mut() {
-    ///     *witness = acc.add(element.clone());
+    /// for (x, w) in additions.iter_mut() {
+    ///     acc.add(&x);
     ///     // Use the saved accumulation as the witness value.
-    ///     witness.set_value(prev.get_value());
+    ///     *w = prev.get_value();
     /// }
     /// // Batch updates.
     /// let mut update = Update::new(&acc);
-    /// for (element, witness) in deletions.iter() {
-    ///     update.del(element.clone(), witness.clone());
+    /// for (x, _) in deletions.iter() {
+    ///     update.del(&x);
     /// }
-    /// for (element, witness) in additions.iter() {
-    ///     update.add(element.clone(), witness.clone());
+    /// for (x, _) in additions.iter() {
+    ///     update.add(&x);
     /// }
     /// // Update all witnesses concurrently.
     /// let additions_iter = Arc::new(Mutex::new(additions.iter_mut()));
@@ -811,37 +663,28 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
     ///     }
     /// }).unwrap();
     /// // Verify all updated witnesses.
-    /// for (element, witness) in additions.iter() {
-    ///     assert!(acc.verify(element.clone(), witness.clone()).is_ok());
+    /// for (x, w) in additions.iter() {
+    ///     assert!(acc.verify(&x, &w).is_ok());
     /// }
-    /// for (element, witness) in staticels.iter() {
-    ///     assert!(acc.verify(element.clone(), witness.clone()).is_ok());
+    /// for (x, w) in staticels.iter() {
+    ///     assert!(acc.verify(&x, &w).is_ok());
     /// }
     /// ```
     pub fn update_witnesses<
-        V: 'u + Clone + Into<Vec<u8>>,
-        IA: Iterator<Item = &'u mut (V, Witness<T>)> + Send,
-        IS: Iterator<Item = &'u mut (V, Witness<T>)> + Send
+        IA: Iterator<Item = &'u mut (T, T)> + Send,
+        IS: Iterator<Item = &'u mut (T, T)> + Send
     >(
         &self,
         additions: Arc<Mutex<IA>>,
         staticels: Arc<Mutex<IS>>,
     ) {
         loop {
-            let (element, witness, is_static) = {
-                let mut s = staticels.lock().unwrap();
-                match s.next() {
-                    Some(next) => {
-                        let (element, witness) = next;
-                        (element, witness, true)
-                    },
+            let (x, w, is_static) = {
+                match staticels.lock().unwrap().next() {
+                    Some((x, w)) => (x, w, true),
                     None => {
-                        let mut a = additions.lock().unwrap();
-                        match a.next() {
-                            Some(next) => {
-                                let (element, witness) = next;
-                                (element, witness, false)
-                            },
+                        match additions.lock().unwrap().next() {
+                            Some((x, w)) => (x, w, false),
                             None => break,
                         }
                     }
@@ -851,13 +694,10 @@ impl<'u, T: 'u + BigInt, M: Map> Update<T, M> {
             let mut clone;
             if !is_static {
                 clone = self.clone();
-                clone.undo_add(element.clone(), witness.clone());
+                clone.undo_add(x);
                 u = &clone;
             }
-            *witness = u.update_witness(
-                element.clone(),
-                witness.clone(),
-            );
+            *w = u.update_witness(&x, &w);
         }
     }
 }

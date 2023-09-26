@@ -25,9 +25,8 @@ recalculate witnesses provided they have access to the previous witnesses,
 the current state of the accumulator, and its public key.
 
 ## Backends
-This crate is built with modular integer type and cryptographic hash
-backends. Integer types must implement the [`BigInt`] trait. Hash functions
-must implement the [`Map`] trait.
+This crate is built with a modular integer type backend. Integer types must
+implement the [`BigInt`] trait.
 
 ## Optional Features
 - `bigint` (default): Enable this feature to support
@@ -36,10 +35,5 @@ must implement the [`Map`] trait.
 - `gmp`: Enable this feature to support [`::gmp::mpz::Mpz`] as an
   integer type. [`::gmp`] is not a pure Rust library, but it is
   currently more performant than [`::num_bigint`].
-- `serde`: Enable this feature to support [`::serde::ser::Serialize`] and
-  [`::serde::de::Deserialize`] for [`Witness`]. If using your own
-  [`BigInt`] implementation, it must also support these traits.
-- `sha3` (default): Enable this feature to support [`sha3::Shake128`]
-  and [`sha3::Shake256`] as hash functions via [`::sha3`].
 
 [1]: https://journals.sagepub.com/doi/pdf/10.1177/1550147719875645

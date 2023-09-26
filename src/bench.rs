@@ -3,8 +3,6 @@
 use clacc::{
     Accumulator,
     Update,
-    Witness,
-    sha3::Shake128 as Map,
 };
 use criterion::{
     BatchSize::SmallInput,
@@ -90,75 +88,98 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt>(
 ) {
     let staticels_count = params.bucket_size - params.deletions_count;
     bencher.iter_batched(|| {
-        let mut rng = rand::thread_rng();
-        let mut deletions: Vec<(Vec<u8>, Witness<_>)> = vec![
-            Default::default(); params.deletions_count
+        let mut deletions: Vec<(T, T)> = vec![
+            (T::from_i64(0), T::from_i64(0)); params.deletions_count
         ];
-        let mut additions: Vec<(Vec<u8>, Witness<_>)> = vec![
-            Default::default(); params.additions_count
+        let mut additions: Vec<(T, T)> = vec![
+            (T::from_i64(0), T::from_i64(0)); params.additions_count
         ];
-        let mut staticels: Vec<(Vec<u8>, Witness<_>)> = vec![
-            Default::default(); staticels_count
+        let mut staticels: Vec<(T, T)> = vec![
+            (T::from_i64(0), T::from_i64(0)); staticels_count
         ];
-        // Generate random bytes for element data.
-        let count = deletions.len() + additions.len() + staticels.len();
-        let mut bytes = vec![0; params.element_size * count];
-        rng.fill_bytes(&mut bytes);
-        let mut i = 0;
-        for (element, _) in deletions.iter_mut() {
-            let start = params.element_size * i;
-            i += 1;
-            let end = params.element_size * i;
-            *element = bytes[start..end].to_vec();
-        }
-        for (element, _) in additions.iter_mut() {
-            let start = params.element_size * i;
-            i += 1;
-            let end = params.element_size * i;
-            *element = bytes[start..end].to_vec();
-        }
-        for (element, _) in staticels.iter_mut() {
-            let start = params.element_size * i;
-            i += 1;
-            let end = params.element_size * i;
-            *element = bytes[start..end].to_vec();
-        }
+        // Generate random elements.
+        let del = Arc::new(Mutex::new(deletions.iter_mut()));
+        let add = Arc::new(Mutex::new(additions.iter_mut()));
+        let sta = Arc::new(Mutex::new(staticels.iter_mut()));
+        thread::scope(|scope| {
+            for _ in 0..num_cpus::get() {
+                let del = Arc::clone(&del);
+                let add = Arc::clone(&add);
+                let sta = Arc::clone(&sta);
+                scope.spawn(move |_| {
+                    let mut rng = rand::thread_rng();
+                    loop {
+                        let x = match del.lock().unwrap().next() {
+                            Some((x, _)) => x,
+                            None => match sta.lock().unwrap().next() {
+                                Some((x, _)) => x,
+                                None => match add.lock().unwrap().next() {
+                                    Some((x, _)) => x,
+                                    None => break,
+                                }
+                            }
+                        };
+                        let mut bytes = vec![0; params.element_size];
+                        rng.fill_bytes(&mut bytes);
+                        let e = T::from_bytes_be(bytes.as_slice());
+                        *x = e.next_prime();
+                    }
+                });
+            }
+        }).unwrap();
         // Create accumulator.
-        let mut acc = Accumulator::<T, Map>::with_private_key(
+        let mut acc = Accumulator::<T>::with_private_key(
             T::from_bytes_be(P.to_vec().as_slice()),
             T::from_bytes_be(Q.to_vec().as_slice()),
         );
         // Accumulate bucket elements.
-        for (element, _) in deletions.iter() {
-            acc.add(element.clone());
+        for (x, _) in deletions.iter() {
+            acc.add(x);
         }
-        for (element, _) in staticels.iter() {
-            acc.add(element.clone());
+        for (x, _) in staticels.iter() {
+            acc.add(x);
         }
-        // Generate witnesses for static elements.
-        for (element, witness) in staticels.iter_mut() {
-            *witness = acc.prove(element.clone()).unwrap();
-        }
+        // Generate witnesses for deletions and static elements.
+        let del = Arc::new(Mutex::new(deletions.iter_mut()));
+        let sta = Arc::new(Mutex::new(staticels.iter_mut()));
+        thread::scope(|scope| {
+            for _ in 0..num_cpus::get() {
+                let acc = acc.clone();
+                let del = Arc::clone(&del);
+                let sta = Arc::clone(&sta);
+                scope.spawn(move |_| {
+                    loop {
+                        let (x, w) = match del.lock().unwrap().next() {
+                            Some(pair) => pair,
+                            None => match sta.lock().unwrap().next() {
+                                Some(pair) => pair,
+                                None => break,
+                            }
+                        };
+                        *w = acc.prove(x).unwrap();
+                    }
+                });
+            }
+        }).unwrap();
         // Save accumulation at current state.
         let prev = acc.clone();
-        // Accumulate deletions.
-        for (element, witness) in deletions.iter_mut() {
-            *witness = acc.prove(element.clone()).unwrap();
-            acc.del(element.clone(), witness.clone()).unwrap();
+        // Remove deletions.
+        for (x, _) in deletions.iter_mut() {
+            acc.del(x).unwrap();
         }
         // Accumulate additions.
-        for (element, witness) in additions.iter_mut() {
-            *witness = acc.add(element.clone());
+        for (x, w) in additions.iter_mut() {
+            acc.add(&x);
             // Use the saved accumulation as the witness value.
-            witness.set_value(prev.get_value());
+            *w = prev.get_value();
         }
         // Batch updates.
         let mut update = Update::new(&acc);
-        for (element, witness) in deletions.iter() {
-            update.del(element.clone(), witness.clone());
+        for (x, _) in deletions.iter() {
+            update.del(x);
         }
-        for (element, witness) in additions.iter() {
-            update.add(element.clone(), witness.clone());
+        for (x, _) in additions.iter() {
+            update.add(x);
         }
         (update, additions, staticels)
     }, |(update, mut additions, mut staticels)| {
