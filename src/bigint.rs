@@ -6,7 +6,6 @@ use num_bigint::{
 };
 use num_integer::Integer;
 use num_modular::ModularUnaryOps;
-use num_prime::nt_funcs::next_prime;
 use std::ops::Neg;
 
 #[cfg_attr(docsrs, doc(cfg(feature = "bigint")))]
@@ -83,19 +82,6 @@ impl crate::BigInt for BigInt {
                 ).unwrap().to_bigint().unwrap().modpow(&e.neg(), m)
             },
         }
-    }
-
-    /// ```
-    /// use num_bigint::BigInt;
-    /// let x: BigInt = 32.into();
-    /// let p = <BigInt as clacc::BigInt>::next_prime(&x);
-    /// assert_eq!(p, 37.into());
-    /// ```
-    fn next_prime(&self) -> Self {
-        next_prime(
-            &self.to_biguint().unwrap(),
-            None,
-        ).unwrap().to_bigint().unwrap()
     }
 
     /// ```

@@ -64,16 +64,6 @@ impl crate::BigInt for Mpz {
 
     /// ```
     /// use gmp::mpz::Mpz;
-    /// let x: Mpz = 32.into();
-    /// let p = <Mpz as clacc::BigInt>::next_prime(&x);
-    /// assert_eq!(p, 37.into());
-    /// ```
-    fn next_prime(&self) -> Self {
-        Mpz::nextprime(self)
-    }
-
-    /// ```
-    /// use gmp::mpz::Mpz;
     /// let a: Mpz = 3.into();
     /// assert_eq!(<Mpz as clacc::BigInt>::size_in_bits(&a), 2);
     /// let b: Mpz = 256.into();

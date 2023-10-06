@@ -78,9 +78,6 @@ pub trait BigInt:
     /// Returns `self^e (mod m)`.
     fn powm<'a>(&self, e: &'a Self, m: &Self) -> Self;
 
-    /// Returns the next prime greater than `self`.
-    fn next_prime(&self) -> Self;
-
     /// Returns the size of `self` in bits.
     fn size_in_bits(&self) -> usize;
 }
@@ -515,9 +512,10 @@ impl<'u, T: 'u + BigInt> Update<T> {
     ///     BigInt as BigIntTrait,
     ///     Update,
     /// };
-    /// use num_bigint::BigInt;
     /// use crossbeam::thread;
     /// use num_cpus;
+    /// use num_bigint::{BigInt, ToBigInt};
+    /// use num_prime::nt_funcs::next_prime;
     /// use rand::RngCore;
     /// use std::sync::{Arc, Mutex};
     /// // Create elements.
@@ -539,17 +537,26 @@ impl<'u, T: 'u + BigInt> Update<T> {
     /// for deletion in deletions.iter_mut() {
     ///     rng.fill_bytes(&mut bytes);
     ///     let x = <BigInt as clacc::BigInt>::from_bytes_be(bytes.as_slice());
-    ///     deletion.0 = x.next_prime();
+    ///     deletion.0 = next_prime(
+    ///         &x.to_biguint().unwrap(),
+    ///         None,
+    ///     ).unwrap().to_bigint().unwrap();
     /// }
     /// for addition in additions.iter_mut() {
     ///     rng.fill_bytes(&mut bytes);
     ///     let x = <BigInt as clacc::BigInt>::from_bytes_be(bytes.as_slice());
-    ///     addition.0 = x.next_prime();
+    ///     addition.0 = next_prime(
+    ///         &x.to_biguint().unwrap(),
+    ///         None,
+    ///     ).unwrap().to_bigint().unwrap();
     /// }
     /// for staticel in staticels.iter_mut() {
     ///     rng.fill_bytes(&mut bytes);
     ///     let x = <BigInt as clacc::BigInt>::from_bytes_be(bytes.as_slice());
-    ///     staticel.0 = x.next_prime();
+    ///     staticel.0 = next_prime(
+    ///         &x.to_biguint().unwrap(),
+    ///         None,
+    ///     ).unwrap().to_bigint().unwrap();
     /// }
     /// // Create accumulator with private key.
     /// let n = vec![0x0c, 0xa1];

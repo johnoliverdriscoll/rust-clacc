@@ -16,8 +16,9 @@ use criterion::{
 };
 use crossbeam::thread;
 use gmp::mpz::Mpz;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, ToBigInt};
 use num_cpus;
+use num_prime::nt_funcs::next_prime;
 use rand::RngCore;
 use std::sync::{Arc, Mutex};
 
@@ -130,7 +131,26 @@ const D: [u8; 384] = [
     0x53, 0xf0, 0xe8, 0x0c, 0x1e, 0x65, 0x6d, 0xdc,
 ];
 
-fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt>(
+trait MapPrime {
+    fn map_prime(self: &Self) -> Self;
+}
+
+impl MapPrime for BigInt {
+    fn map_prime(self: &BigInt) -> BigInt {
+        next_prime(
+            &self.to_biguint().unwrap(),
+            None,
+        ).unwrap().to_bigint().unwrap()
+    }
+}
+
+impl MapPrime for Mpz {
+    fn map_prime(self: &Mpz) -> Mpz {
+        Mpz::nextprime(self)
+    }
+}
+
+fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt + MapPrime>(
     bencher: &'r mut Bencher<'s>,
     params: &'t0 UpdateWitnessesParams,
 ) {
@@ -170,7 +190,7 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt>(
                         let mut bytes = vec![0; params.element_size];
                         rng.fill_bytes(&mut bytes);
                         let e = T::from_bytes_be(bytes.as_slice());
-                        *x = e.next_prime();
+                        *x = <T as MapPrime>::map_prime(&e);
                     }
                 });
             }
