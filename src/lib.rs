@@ -105,7 +105,7 @@ pub struct Accumulator<T: BigInt> {
 
 impl<T: BigInt> Accumulator<T> {
 
-    /// Initialize an accumulator from private key parameters `n` the  modulus
+    /// Initialize an accumulator from private key parameters `n` the modulus
     /// and `d` ϕ(n). All accumulators are able to add elements and verify
     /// witnesses. An accumulator constructed from a private key is able to
     /// delete elements and prove elements after their addition.
@@ -234,12 +234,10 @@ impl<T: BigInt> Accumulator<T> {
     pub fn del(
         &mut self,
         x: &T,
-    ) -> Result<T, Error> {
+    ) -> Result<T, MissingPrivateKeyError> {
         let d = match self.d.as_ref() {
             Some(d) => d,
-            None => {
-                return Err(Error { source: Box::new(ErrorMissingPrivateKey) });
-            },
+            None => return Err(MissingPrivateKeyError {}),
         };
         let x_i = x.powm(&T::from_i64(-1), &d);
         self.z = self.z.powm(&x_i, &self.n);
@@ -281,14 +279,13 @@ impl<T: BigInt> Accumulator<T> {
     pub fn prove(
         &self,
         x: &T,
-    ) -> Result<T, Error> {
-        match self.d.as_ref() {
-            Some(d) => {
-                let x_i = x.powm(&T::from_i64(-1), &d);
-                Ok(self.z.powm(&x_i, &self.n))
-            },
-            None => Err(Error { source: Box::new(ErrorMissingPrivateKey) })
-        }
+    ) -> Result<T, MissingPrivateKeyError> {
+        let d = match self.d.as_ref() {
+            Some(d) => d,
+            None => return Err(MissingPrivateKeyError {}),
+        };
+        let x_i = x.powm(&T::from_i64(-1), &d);
+        Ok(self.z.powm(&x_i, &self.n))
     }
 
     /// Verify an element is a member of the accumulator. The element `x` must
@@ -326,10 +323,10 @@ impl<T: BigInt> Accumulator<T> {
         &self,
         x: &T,
         w: &T,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ElementNotFoundError> {
         let w_x = w.powm(x, &self.n);
         if self.z != w_x {
-            Err(Error { source: Box::new(ErrorElementNotFound) })
+            Err(ElementNotFoundError {})
         } else {
             Ok(())
         }
@@ -414,7 +411,7 @@ impl<'u, T: 'u + BigInt> Update<T> {
         }
     }
 
-    /// Absorb a prime that must be added to a witness.
+    /// Absorb an element that must be added to a witness.
     pub fn add(
         &mut self,
         x: &T,
@@ -422,7 +419,7 @@ impl<'u, T: 'u + BigInt> Update<T> {
         self.pi_a *= x.clone();
     }
 
-    /// Absorb a prime that must be deleted from a witness.
+    /// Absorb an element that must be deleted from a witness.
     pub fn del(
         &mut self,
         x: &T,
@@ -430,7 +427,7 @@ impl<'u, T: 'u + BigInt> Update<T> {
         self.pi_d *= x.clone();
     }
 
-    /// Undo an absorbed prime's addition into an update.
+    /// Undo an absorbed element's addition into an update.
     pub fn undo_add(
         &mut self,
         x: &T,
@@ -438,7 +435,7 @@ impl<'u, T: 'u + BigInt> Update<T> {
         self.pi_a /= x.clone();
     }
 
-    /// Undo an absorbed prime's deletion from an update.
+    /// Undo an absorbed element's deletion from an update.
     pub fn undo_del(
         &mut self,
         x: &T,
@@ -644,37 +641,19 @@ impl<'u, T: 'u + BigInt> Update<T> {
     }
 }
 
-trait DisplayError: std::fmt::Display + std::fmt::Debug {}
-
-/// The error type which is returned from peforming accumulator operations.
 #[derive(Debug)]
-pub struct Error {
-    source: Box<dyn DisplayError>,
-}
+pub struct MissingPrivateKeyError;
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&*self.source, f)
-    }
-}
-
-#[derive(Debug)]
-struct ErrorMissingPrivateKey;
-
-impl DisplayError for ErrorMissingPrivateKey {}
-
-impl std::fmt::Display for ErrorMissingPrivateKey {
+impl std::fmt::Display for MissingPrivateKeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Missing private key")
     }
 }
 
 #[derive(Debug)]
-struct ErrorElementNotFound;
+pub struct ElementNotFoundError;
 
-impl DisplayError for ErrorElementNotFound {}
-
-impl std::fmt::Display for ErrorElementNotFound {
+impl std::fmt::Display for ElementNotFoundError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Element not found")
     }
