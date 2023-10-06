@@ -93,11 +93,11 @@ pub trait BigInt:
 #[derive(Clone)]
 pub struct Accumulator<T: BigInt> {
 
-    /// Private exponent.
-    d: Option<T>,
-
     /// Modulus.
     n: T,
+
+    /// Private exponent.
+    d: Option<T>,
 
     /// The current accumulation value.
     z: T,
@@ -105,128 +105,69 @@ pub struct Accumulator<T: BigInt> {
 
 impl<T: BigInt> Accumulator<T> {
 
-    /// Initialize an accumulator from private key parameters. All
-    /// accumulators are able to add elements and verify witnesses. An
-    /// accumulator constructed from a private key is able to delete elements
-    /// and prove elements after their addition.
+    /// Initialize an accumulator from private key parameters `n` the  modulus
+    /// and `d` ϕ(n). All accumulators are able to add elements and verify
+    /// witnesses. An accumulator constructed from a private key is able to
+    /// delete elements and prove elements after their addition.
     ///
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
     /// let acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
     /// );
     /// ```
-    pub fn with_private_key(p: T, q: T) -> Self {
-        let bn1 = T::from_i64(1);
+    pub fn with_private_key(
+        n: &T,
+        d: &T,
+    ) -> Self {
         Accumulator {
-            d: Some((p.clone() - bn1.clone()) * (q.clone() - bn1.into())),
-            n: p * q,
+            n: n.clone(),
+            d: Some(d.clone()),
             z: T::from_i64(BASE),
         }
     }
 
-    /// Create an accumulator from a randomly generated private key and return
-    /// it along with the generated key parameters.
-    ///
-    /// If `key_bits` is `None`, the bit size of the generated modulus is
-    /// 3072.
-    ///
-    /// ```
-    /// use clacc::{
-    ///     Accumulator,
-    ///     BigInt as BigIntTrait,
-    /// };
-    /// use num_bigint::BigInt;
-    /// use rand::RngCore;
-    /// let mut rng = rand::thread_rng();
-    /// let acc = Accumulator::<BigInt>::with_random_key(
-    ///     |bytes| rng.fill_bytes(bytes),
-    ///     Some(256),
-    /// ).0;
-    /// assert_eq!(acc.get_public_key().size_in_bits(), 256);
-    /// ```
-    pub fn with_random_key<F: FnMut(&mut [u8])>(
-        mut fill_bytes: F,
-        key_bits: Option<usize>,
-    ) -> (Self, T, T) {
-        let mod_bits = match key_bits {
-            Some(bits) => bits,
-            None => 3072,
-        };
-        let prime_bytes = (mod_bits + 7) / 16;
-        let mut p;
-        let mut q;
-        let mut bytes = vec![0; prime_bytes];
-        loop {
-            fill_bytes(&mut bytes);
-            p = T::from_bytes_be(bytes.as_slice()).next_prime();
-            fill_bytes(&mut bytes);
-            q = T::from_bytes_be(bytes.as_slice()).next_prime();
-            if (p.clone() * q.clone()).size_in_bits() != mod_bits {
-                continue;
-            }
-            if p.clone() < q.clone() {
-                std::mem::swap(&mut p, &mut q);
-            }
-            break;
-        }
-        (Accumulator::<T>::with_private_key(p.clone(), q.clone()), p, q)
-    }
-
-    /// Initialize an accumulator from a public key. An accumulator
-    /// constructed from a public key is only able to add elements and verify
-    /// witnesses.
+    /// Initialize an accumulator from a public key. An accumulator constructed
+    /// from a public key is only able to add elements and verify witnesses.
     ///
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let acc = Accumulator::<BigInt>::with_public_key(
-    ///    <BigInt as clacc::BigInt>::from_bytes_be( n.as_slice()),
+    ///    &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// ```
-    pub fn with_public_key(n: T) -> Self {
+    pub fn with_public_key(
+        n: &T,
+    ) -> Self {
         Accumulator {
+            n: n.clone(),
             d: None,
-            n: n,
             z: T::from_i64(BASE),
         }
     }
 
     /// Get an accumulator's public key.
-    ///
-    /// ```
-    /// use clacc::Accumulator;
-    /// use num_bigint::BigInt;
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
-    /// let n = vec![0x0c, 0xa1];
-    /// let mut acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
-    /// );
-    /// assert_eq!(
-    ///   acc.get_public_key(),
-    ///   <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
-    /// );
-    /// ```
-    pub fn get_public_key(&self) -> T {
+    pub fn get_public_key(
+        &self,
+    ) -> T {
         self.n.clone()
     }
 
-    /// Add a prime to an accumulator.
+    /// Add an element to the accumulator. The element `x` must be a prime.
+    /// The returned value is a witness to the element's addition.
     ///
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
-    /// use rand::RngCore;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(3);
     /// let w = acc.add(&x);
@@ -239,11 +180,11 @@ impl<T: BigInt> Accumulator<T> {
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(3);
     /// let w = acc.add(&x);
@@ -258,16 +199,17 @@ impl<T: BigInt> Accumulator<T> {
         w
     }
 
-    /// Delete a prime from an accumulator.
+    /// Delete an element from an accumulator. The element `x` must be a prime.
+    /// The returned value is the accumulation less the element.
     ///
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(7);
     /// let w = acc.add(&x);
@@ -283,7 +225,7 @@ impl<T: BigInt> Accumulator<T> {
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice())
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice())
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(3);
     /// acc.add(&x);
@@ -304,16 +246,17 @@ impl<T: BigInt> Accumulator<T> {
         Ok(self.z.clone())
     }
 
-    /// Generate a witness to a prime's addition to the accumulation.
+    /// Generate a witness to an element's addition to the accumulation.
+    /// The element `x` must be a prime.
     ///
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(7);
     /// acc.add(&x);
@@ -329,7 +272,7 @@ impl<T: BigInt> Accumulator<T> {
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(7);
     /// acc.add(&x);
@@ -348,14 +291,15 @@ impl<T: BigInt> Accumulator<T> {
         }
     }
 
-    /// Verify a prime is a member of an accumulator.
+    /// Verify an element is a member of the accumulator. The element `x` must
+    /// be a prime.
     ///
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(3);
     /// let u = acc.add(&x);
@@ -368,11 +312,11 @@ impl<T: BigInt> Accumulator<T> {
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(3);
     /// let w = acc.add(&x);
@@ -398,7 +342,7 @@ impl<T: BigInt> Accumulator<T> {
     /// use num_bigint::BigInt;
     /// let n = vec![0x0c, 0xa1];
     /// let mut acc = Accumulator::<BigInt>::with_public_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(3);
     /// let y = <BigInt as clacc::BigInt>::from_i64(5);
@@ -423,15 +367,14 @@ impl<T: BigInt> Accumulator<T> {
     /// ```
     /// use clacc::Accumulator;
     /// use num_bigint::BigInt;
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
-    /// let mut acc_prv = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
-    /// );
     /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
+    /// let mut acc_prv = Accumulator::<BigInt>::with_private_key(
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
+    /// );
     /// let mut acc_pub = Accumulator::<BigInt>::with_public_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
     /// );
     /// let x = <BigInt as clacc::BigInt>::from_i64(3);
     /// let w = acc_prv.add(&x);
@@ -463,12 +406,11 @@ impl<'u, T: 'u + BigInt> Update<T> {
     pub fn new(
         acc: &Accumulator<T>,
     ) -> Self {
-        let bn1 = T::from_i64(1);
         Update {
             n: acc.get_public_key(),
             z: acc.get_value(),
-            pi_a: bn1.clone(),
-            pi_d: bn1.clone(),
+            pi_a: T::from_i64(1),
+            pi_d: T::from_i64(1),
         }
     }
 
@@ -515,11 +457,11 @@ impl<'u, T: 'u + BigInt> Update<T> {
     /// use num_bigint::BigInt;
     /// // In this example, the update will include a deletion, so the
     /// // accumulator must be created with a private key.
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
     /// );
     /// // Create the static elements.
     /// let xs = <BigInt as clacc::BigInt>::from_i64(5);
@@ -613,11 +555,11 @@ impl<'u, T: 'u + BigInt> Update<T> {
     ///     staticel.0 = x.next_prime();
     /// }
     /// // Create accumulator with private key.
-    /// let p = vec![0x3d];
-    /// let q = vec![0x35];
+    /// let n = vec![0x0c, 0xa1];
+    /// let d = vec![0x0c, 0x30];
     /// let mut acc = Accumulator::<BigInt>::with_private_key(
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(p.as_slice()),
-    ///     <BigInt as clacc::BigInt>::from_bytes_be(q.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(n.as_slice()),
+    ///     &<BigInt as clacc::BigInt>::from_bytes_be(d.as_slice()),
     /// );
     /// // Accumulate elements.
     /// for (x, _) in deletions.iter() {
