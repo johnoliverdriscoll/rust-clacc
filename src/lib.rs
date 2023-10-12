@@ -53,12 +53,11 @@ pub trait BigInt:
     + Eq
     + PartialOrd
     + std::ops::Neg
-    + std::ops::Add<Output = Self>
-    + std::ops::Sub<Output = Self>
-    + std::ops::Mul<Output = Self>
-    + std::ops::Rem<Output = Self>
-    + std::ops::MulAssign
-    + std::ops::DivAssign
+    + for<'a> std::ops::Add<&'a Self, Output = Self>
+    + for<'a> std::ops::Sub<&'a Self, Output = Self>
+    + for<'a> std::ops::Mul<&'a Self, Output = Self>
+    + for<'a> std::ops::Div<&'a Self, Output = Self>
+    + for<'a> std::ops::Rem<&'a Self, Output = Self>
 {
     /// Constructs a [`BigInt`] from an i64.
     fn from_i64(v: i64) -> Self;
@@ -413,7 +412,7 @@ impl<'u, T: 'u + BigInt> Update<T> {
         &mut self,
         x: &T,
     ) {
-        self.pi_a *= x.clone();
+        self.pi_a = self.pi_a.clone() * x;
     }
 
     /// Absorb an element that must be deleted from a witness.
@@ -421,23 +420,7 @@ impl<'u, T: 'u + BigInt> Update<T> {
         &mut self,
         x: &T,
     ) {
-        self.pi_d *= x.clone();
-    }
-
-    /// Undo an absorbed element's addition into an update.
-    pub fn undo_add(
-        &mut self,
-        x: &T,
-    ) {
-        self.pi_a /= x.clone();
-    }
-
-    /// Undo an absorbed element's deletion from an update.
-    pub fn undo_del(
-        &mut self,
-        x: &T,
-    ) {
-        self.pi_d /= x.clone();
+        self.pi_d = self.pi_d.clone() * x;
     }
 
     /// Update a witness. The update will include all additions and deletions
@@ -486,9 +469,9 @@ impl<'u, T: 'u + BigInt> Update<T> {
         w: &T,
     ) -> T {
         let (_, a, b) = self.pi_d.gcdext(&x);
-        (w.powm(&(a * self.pi_a.clone()), &self.n)
-         * self.z.powm(&b, &self.n))
-            % self.n.clone()
+        (w.powm(&(a * &self.pi_a), &self.n)
+         * &self.z.powm(&b, &self.n))
+            % &self.n
     }
 
     /// Thread-safe method that updates multiple witnesses.
@@ -618,31 +601,33 @@ impl<'u, T: 'u + BigInt> Update<T> {
     /// ```
     pub fn update_witnesses<
         IA: Iterator<Item = &'u mut (T, T)> + Send,
-        IS: Iterator<Item = &'u mut (T, T)> + Send
+        IS: Iterator<Item = &'u mut (T, T)> + Send,
     >(
         &self,
         additions: Arc<Mutex<IA>>,
         staticels: Arc<Mutex<IS>>,
     ) {
         loop {
-            let (x, w, is_static) = {
+            let update;
+            let (x, w, u) = {
                 match staticels.lock().unwrap().next() {
-                    Some((x, w)) => (x, w, true),
+                    Some((x, w)) => (x, w, self),
                     None => {
                         match additions.lock().unwrap().next() {
-                            Some((x, w)) => (x, w, false),
+                            Some((x, w)) => {
+                                update = Update {
+                                    n: self.n.clone(),
+                                    z: self.z.clone(),
+                                    pi_a: self.pi_a.clone() / x,
+                                    pi_d: self.pi_d.clone(),
+                                };
+                                (x, w, &update)
+                            }
                             None => break,
                         }
                     }
                 }
             };
-            let mut u = self;
-            let mut clone;
-            if !is_static {
-                clone = self.clone();
-                clone.undo_add(x);
-                u = &clone;
-            }
             *w = u.update_witness(&x, &w);
         }
     }
