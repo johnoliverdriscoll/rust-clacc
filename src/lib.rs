@@ -407,6 +407,20 @@ impl<'u, T: 'u + BigInt> Update<T> {
         }
     }
 
+    /// Create a new batched update from products.
+    pub fn from_products(
+        acc: &Accumulator<T>,
+        pi_a: &T,
+        pi_d: &T,
+    ) -> Self {
+        Update {
+            n: acc.get_public_key(),
+            z: acc.get_value(),
+            pi_a: pi_a.clone(),
+            pi_d: pi_d.clone(),
+        }
+    }
+
     /// Absorb an element that must be added to a witness.
     pub fn add(
         &mut self,
@@ -421,6 +435,20 @@ impl<'u, T: 'u + BigInt> Update<T> {
         x: &T,
     ) {
         self.pi_d = self.pi_d.clone() * x;
+    }
+
+    /// Return the update's product of additions.
+    pub fn get_add(
+        &self,
+    ) -> T {
+        self.pi_a.clone()
+    }
+
+    /// Return the update's product of deletions.
+    pub fn get_del(
+        &self,
+    ) -> T {
+        self.pi_d.clone()
     }
 
     /// Update a witness. The update will include all additions and deletions
@@ -586,8 +614,8 @@ impl<'u, T: 'u + BigInt> Update<T> {
     /// thread::scope(|scope| {
     ///     for _ in 0..num_cpus::get() {
     ///         let u = update.clone();
-    ///         let add = Arc::clone(&additions_iter);
-    ///         let sta = Arc::clone(&staticels_iter);
+    ///         let add = additions_iter.clone();
+    ///         let sta = staticels_iter.clone();
     ///         scope.spawn(move |_| u.update_witnesses(add, sta));
     ///     }
     /// }).unwrap();

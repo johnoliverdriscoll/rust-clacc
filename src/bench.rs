@@ -9,7 +9,6 @@ use criterion::{
     Bencher,
     BenchmarkId,
     Criterion,
-    SamplingMode,
     Throughput,
     criterion_group,
     criterion_main,
@@ -22,9 +21,26 @@ use num_prime::nt_funcs::next_prime;
 use rand::RngCore;
 use std::sync::{Arc, Mutex};
 
+// Number of benchmarks to perform.
+const BUCKETS_COUNT: usize = 6;
+
+// Number of witnesses to be updated.
+const BUCKET_SIZE: usize = 100;
+
+// Byte size of elements.
+const ELEMENT_SIZE: usize = 16;
+
+// Number of deletions over total number of elements in bucket.
+const DEL_FACTOR: f32 = 0.01;
+
+// Number of additions over total number of elements in bucket.
+const ADD_FACTOR: f32 = 0.05;
+
+// Percentage of updates that are additions.
+const ADD_PERCENT: f32 = ADD_FACTOR / (DEL_FACTOR + ADD_FACTOR);
+
 struct UpdateWitnessesParams {
-    element_size: usize,
-    bucket_size: usize,
+    staticels_count: usize,
     deletions_count: usize,
     additions_count: usize,
 }
@@ -154,7 +170,6 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt + MapPrime>(
     bencher: &'r mut Bencher<'s>,
     params: &'t0 UpdateWitnessesParams,
 ) {
-    let staticels_count = params.bucket_size - params.deletions_count;
     bencher.iter_batched(|| {
         let mut deletions: Vec<(T, T)> = vec![
             (T::from_i64(0), T::from_i64(0)); params.deletions_count
@@ -163,7 +178,7 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt + MapPrime>(
             (T::from_i64(0), T::from_i64(0)); params.additions_count
         ];
         let mut staticels: Vec<(T, T)> = vec![
-            (T::from_i64(0), T::from_i64(0)); staticels_count
+            (T::from_i64(0), T::from_i64(0)); params.staticels_count
         ];
         // Generate random elements.
         let del = Arc::new(Mutex::new(deletions.iter_mut()));
@@ -187,7 +202,7 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt + MapPrime>(
                                 }
                             }
                         };
-                        let mut bytes = vec![0; params.element_size];
+                        let mut bytes = vec![0; ELEMENT_SIZE];
                         rng.fill_bytes(&mut bytes);
                         let e = T::from_bytes_be(bytes.as_slice());
                         *x = <T as MapPrime>::map_prime(&e);
@@ -207,22 +222,17 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt + MapPrime>(
         for (x, _) in staticels.iter() {
             acc.add(x);
         }
-        // Generate witnesses for deletions and static elements.
-        let del = Arc::new(Mutex::new(deletions.iter_mut()));
+        // Generate witnesses for static elements.
         let sta = Arc::new(Mutex::new(staticels.iter_mut()));
         thread::scope(|scope| {
             for _ in 0..num_cpus::get() {
                 let acc = acc.clone();
-                let del = Arc::clone(&del);
-                let sta = Arc::clone(&sta);
+                let sta = sta.clone();
                 scope.spawn(move |_| {
                     loop {
-                        let (x, w) = match del.lock().unwrap().next() {
+                        let (x, w) = match sta.lock().unwrap().next() {
                             Some(pair) => pair,
-                            None => match sta.lock().unwrap().next() {
-                                Some(pair) => pair,
-                                None => break,
-                            }
+                            None => break,
                         };
                         *w = acc.prove(x).unwrap();
                     }
@@ -242,13 +252,37 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt + MapPrime>(
             *w = z.clone();
         }
         // Batch updates.
-        let mut update = Update::new(&acc);
-        for (x, _) in deletions.iter() {
-            update.del(x);
-        }
-        for (x, _) in additions.iter() {
-            update.add(x);
-        }
+        let add = Arc::new(Mutex::new(additions.iter()));
+        let del = Arc::new(Mutex::new(deletions.iter()));
+        let add_update = Arc::new(Mutex::new(Update::new(&acc)));
+        let del_update = Arc::new(Mutex::new(Update::new(&acc)));
+        thread::scope(|scope| {
+            // Additions and deletions can be batched in parallel.
+            let add = add.clone();
+            let add_update = add_update.clone();
+            scope.spawn(move |_| {
+                let mut add = add.lock().unwrap();
+                let mut add_update = add_update.lock().unwrap();
+                while let Some((x, _)) = add.next() {
+                    add_update.add(x);
+                }
+            });
+            let del = del.clone();
+            let del_update = del_update.clone();
+            scope.spawn(move |_| {
+                let mut del = del.lock().unwrap();
+                let mut del_update = del_update.lock().unwrap();
+                while let Some((x, _)) = del.next() {
+                    del_update.del(x);
+                }
+            });
+        }).unwrap();
+        // Create combined update.
+        let update = Update::from_products(
+            &acc,
+            &add_update.lock().unwrap().get_add(),
+            &del_update.lock().unwrap().get_del(),
+        );
         (update, additions, staticels)
     }, |(update, mut additions, mut staticels)| {
         let additions = Arc::new(Mutex::new(additions.iter_mut()));
@@ -265,31 +299,24 @@ fn update_witnesses_bench<'r, 's, 't0, T: clacc::BigInt + MapPrime>(
 }
 
 fn bench(c: &mut Criterion) {
-    // Benchmark constants.
-    const BUCKETS_COUNT: usize = 8;
-    const ELEMENT_SIZE: usize = 16;
-    const DELETIONS_FACTOR: f32 = 0.05;
-    const ADDITIONS_FACTOR: f32 = 0.20;
-    // Create benchmark groups.
     let mut group = c.benchmark_group("update_witnesses");
-    // Create bucket sizes.
     for e in 0..BUCKETS_COUNT {
-        let bucket_size = 1 << e;
+        let updates_count = 4 << e;
+        let add_count = (updates_count as f32 * ADD_PERCENT) as usize;
+        let del_count = updates_count - add_count;
         let params = UpdateWitnessesParams {
-            element_size: ELEMENT_SIZE,
-            bucket_size: bucket_size,
-            deletions_count: (bucket_size as f32 * DELETIONS_FACTOR) as usize,
-            additions_count: (bucket_size as f32 * ADDITIONS_FACTOR) as usize,
+            staticels_count: BUCKET_SIZE,
+            deletions_count: del_count,
+            additions_count: add_count,
         };
-        group.sampling_mode(SamplingMode::Flat);
-        group.throughput(Throughput::Elements(bucket_size as u64));
+        group.throughput(Throughput::Elements(BUCKET_SIZE as u64));
         group.bench_with_input(
-            BenchmarkId::from_parameter(format!("BigInt/{}", bucket_size)),
+            BenchmarkId::from_parameter(format!("BigInt/{}", updates_count)),
             &params,
             update_witnesses_bench::<BigInt>,
         );
         group.bench_with_input(
-            BenchmarkId::from_parameter(format!("Mpz/{}", bucket_size)),
+            BenchmarkId::from_parameter(format!("Mpz/{}", updates_count)),
             &params,
             update_witnesses_bench::<Mpz>,
         );
